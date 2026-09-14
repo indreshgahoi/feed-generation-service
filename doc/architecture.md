@@ -15,44 +15,51 @@ The [source design doc](instagram_feed_design_doc.pdf) specs a feed system for
 This repo implements the same shape of system, at a scale that runs on one
 laptop, with each service written in a different language matching the
 doc's own (explicit or implied) choices. Unlike an earlier version of this
-repo, sharding, the graph store, and hot/cold feed storage are **actually
-implemented**, not simplified away and left as a discussion point --
-see [sharding.md](sharding.md) and [caching.md](caching.md) for the design
+repo, sharding, the graph store, hot/cold feed storage, and a real edge
+gateway are **actually implemented**, not simplified away and left as a
+discussion point -- see [sharding.md](sharding.md),
+[caching.md](caching.md), and [gateway.md](gateway.md) for the design
 records. The "why a different language per service" framing is explained
 in the top-level [README](../README.md); this doc is about what the system
 *does*, not why it's polyglot.
 
+Every application service (and Envoy) runs as a Docker Compose container
+now -- see [gateway.md](gateway.md) for the routing design and
+`docker-compose.yml` for the full container topology. Nothing in this
+system runs as a bare host process.
+
 ## Component diagram
 
 ```
-                        ┌─────────────────────────────────────────────┐
-                        │                  web-ui (:5173)               │
-                        │   static HTML/JS, serve.py reverse-proxies    │
-                        │   /api/ingest -> :4001, /api/feed -> :4002    │
-                        └───────────────────┬───────────────────────────┘
-                                            │
-                    ┌───────────────────────┼───────────────────────┐
-                    ▼                                                ▼
-   ┌────────────────────────────┐                    ┌──────────────────────────────┐
-   │ post-ingestion-service (Go) │                    │ feed-aggregation-service (Go) │
-   │        :4001                │                    │           :4002               │
-   └──┬─────────┬─────────┬──────┘                    └───┬───────┬───────┬───────┬───┘
-      │         │         │                               │       │       │       │
-      ▼         ▼         ▼                               ▼       ▼       ▼       ▼
-  Postgres    Neo4j     Redis                         Redis    Redis   BadgerDB  Qdrant
-  shard 0-3  (social   (sharded                        hot     celeb    cold     (ANN on
-  (posts,    graph:    counters,                       inbox   outbox   tier     taste
-  users,     FOLLOWS,  rate limit,                    (ZSET)   (ZSET)  (dormant  vector)
-  likes,     follower  read-your-                                      followers)
-  comments)  Count,    own-writes)
-             isCeleb)     │                                     ▲
-                          ▼                                     │ HTTP append
-                        Kafka                          ┌────────┴────────┐
-                     "post-created"                     │  (fanout-worker  │
-                     3 partitions,                       │   writes here    │
-                     key=author_id                       │   for dormant     │
-                          │                               │   followers)      │
-        ┌─────────────────┼──────────────────┐            └───────────────────┘
+                                   Client
+                                     │
+                        ┌─────────────────────────────┐
+                        │        Envoy gateway           │
+                        │  :8080 (HTTP/1.1, h2, all paths) │
+                        │  :8443 (HTTP/3/QUIC, feed only)    │
+                        └──┬──────────────┬──────────────┬──┘
+                /api/ingest│    /api/feed  │           /* │
+                           ▼               ▼               ▼
+   ┌────────────────────────────┐ ┌──────────────────────────────┐ ┌──────────────┐
+   │ post-ingestion-service (Go) │ │ feed-aggregation-service (Go) │ │ web-ui        │
+   │           :4001              │ │            :4002               │ │ (nginx, :80)  │
+   └──┬─────────┬─────────┬──────┘ └──┬───────┬───────┬───────┬───┘ └──────────────┘
+      │         │         │           │       │       │       │
+      ▼         ▼         ▼           ▼       ▼       ▼       ▼
+  Postgres    Neo4j     Redis     Redis    Redis   BadgerDB  Qdrant
+  shard 0-3  (social   (sharded    hot     celeb    cold     (ANN on
+  (posts,    graph:    counters,  inbox   outbox   tier     taste
+  users,     FOLLOWS,  rate limit,(ZSET)   (ZSET)  (dormant  vector)
+  likes,     follower  read-your-                            followers)
+  comments)  Count,    own-writes)  │                            ▲
+             isCeleb)     │         │                            │ direct HTTP call,
+                          ▼         │                            │ NOT via Envoy --
+                        Kafka       │                            │ see doc/gateway.md
+                     "post-created" │                  ┌─────────┴────────┐
+                     3 partitions,  │                   │  (fanout-worker    │
+                     key=author_id  │                   │   writes here for   │
+                          │         │                   │   dormant followers) │
+        ┌─────────────────┼──────────────────┐          └──────────────────────┘
         ▼                 ▼                  ▼
  fanout-worker      vector-pipeline    notification-service
  (Java, consumer    (Python, consumer  (Node/TS, consumer
@@ -74,8 +81,10 @@ in the top-level [README](../README.md); this doc is about what the system
                         │   ranking-service (Rust)   │
                         │           :4003             │
                         │  POST /rank -- stateless,    │
-                        │  called synchronously by     │
-                        │  feed-aggregation-service    │
+                        │  called directly by          │
+                        │  feed-aggregation-service,    │
+                        │  NOT via Envoy (see            │
+                        │  doc/gateway.md)                │
                         └──────────────────────────┘
 ```
 
@@ -89,7 +98,11 @@ in the top-level [README](../README.md); this doc is about what the system
 | [notification-service](../services/notification-service) | Node/TS | -- (consumer only) | @mention notifications, shard-aware | Kafka (consumer), Redis (username directory read), Postgres shard owning the recipient (write) |
 | [feed-aggregation-service](../services/feed-aggregation-service) | Go | 4002 | The entire read path, hot/cold feed storage | Redis, BadgerDB (embedded), 4x Postgres shards (cross-shard hydration), Neo4j (celebrity lookups), Qdrant, ranking-service (HTTP) |
 | [ranking-service](../services/ranking-service) | Rust | 4003 | Stateless scoring | Nothing -- pure function over its input, no DB/cache of its own |
-| [web-ui](../web-ui) | static HTML/JS + Python proxy | 5173 | Sample client | post-ingestion-service, feed-aggregation-service (via same-origin proxy) |
+| [web-ui](../web-ui) | static HTML/JS (nginx) | 80 | Sample client | Nothing directly -- all API calls route through Envoy |
+| [envoy](../envoy) | Envoy (config only, no app code) | 8080 (HTTP), 8443 (HTTP/3), 9901 (admin) | Single ingress for all client traffic; see [gateway.md](gateway.md) | post-ingestion-service, feed-aggregation-service, web-ui |
+
+All ports above except Envoy's are **container-internal only** -- no
+other service is published to the host. Envoy is the sole entry point.
 
 Each consumer service is independently scalable in principle (more Kafka
 partitions + more consumer instances in the same group), though this repo
@@ -229,12 +242,27 @@ CockroachDB/Pebble precedent for that exact substitution): [caching.md](caching.
 
 ## Config
 
-Every service reads its config from environment variables, all defined in
-one shared [`.env`](../.env.example) file (see that file for the full list
-with defaults), plus the shared [`config/shards.json`](../config/shards.json)
-file every language's shard router reads (connection string per shard,
-virtual-node count for the consistent-hash ring). There's no per-service
-config file format to learn beyond that -- `os.Getenv` / `System.getenv` /
-`os.environ` / `process.env` / `std::env::var`, one line each, same
-variable names across the stack where they overlap (e.g. `SHARD_CONFIG_PATH`,
-`KAFKA_BROKERS`, `NEO4J_URI`).
+Every service reads its config from environment variables -- there's no
+per-service config file format to learn, just `os.Getenv` /
+`System.getenv` / `os.environ` / `process.env` / `std::env::var`, one
+line each, same variable names across the stack where they overlap (e.g.
+`SHARD_CONFIG_PATH`, `KAFKA_BROKERS`, `NEO4J_URI`). Where those values
+actually come from depends on how a service is run:
+
+- **Containerized (the normal path, via `docker-compose.yml`):** values
+  are set directly in each service's `environment:` block, pointing at
+  other services by their Compose service name (`redis`, `graph-db`,
+  `kafka:29092`, etc.) rather than `localhost`.
+- **Host-mode (dev/test tooling only):** [`.env.example`](../.env.example)
+  has the `localhost`-and-host-port equivalents, for anything run
+  directly on the host (`go test`, a service started outside Docker for
+  debugging).
+
+Both modes share the same shard *topology* but not the same
+*addressing*: [`config/shards.json`](../config/shards.json) (host ports,
+`localhost:5441`..`5444`) is read by host-mode tools;
+[`config/shards.docker.json`](../config/shards.docker.json) (container
+addresses, `shard-0:5432`..`shard-3:5432`) is read by every containerized
+app service, mounted in at `/app/config` (see `doc/gateway.md`'s sibling
+concern -- config baked into vs. mounted into an image -- and
+`docker-compose.yml` for exactly which services mount it).

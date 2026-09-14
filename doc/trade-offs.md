@@ -37,8 +37,10 @@ plus a few new rows the sharded/polyglot design itself introduces.
 | 15 | Language-per-service | 6 different languages, chosen for the learning exercise | Most real orgs standardize on 1-3 languages | Polyglot has a real, non-academic cost: every language needs its own on-call runbooks, dependency-upgrade cadence, security patching process, and hiring pool -- and here specifically, the shard-routing algorithm (consistent hash + Snowflake IDs) has to be reimplemented identically in Go, Java, *and* TypeScript, which is exactly the kind of cross-language surface area that goes stale silently unless it's tested for parity on every change (`scripts/verify_shard_parity.sh` exists for exactly this reason). A team doing this in production would pay for the "best tool per job" benefit with meaningfully higher operational overhead -- worth it only when the performance/ecosystem gap between languages is large enough to justify it |
 | 16 | Schema migrations | One idempotent `db/shard-schema.sql`, re-run by hand against all 4 shards | Versioned migration tool (Flyway, golang-migrate, Alembic) with up/down migrations, applied automatically and identically to every shard in CI/CD | A single idempotent script works until two people modify the schema in parallel, or a migration succeeds on 3 shards and fails on the 4th, leaving the fleet's schemas inconsistent with no record of which shards are on which version |
 | 17 | Consistency model | Read-your-own-write gap: a user's own new post doesn't appear in their *own* feed read (they don't follow themselves, and it's not in a celebrity outbox unless they are one) -- only via vector recall, if at all | Real systems make an explicit product decision here (usually: show a user their own recent posts pinned/injected client-side, not through the same recall funnel) | This is a good one to notice unprompted in an interview -- it shows you're thinking about the actual user experience implications of an architecture, not just its throughput numbers |
+| 18 | Gateway vs. service mesh | Envoy as an edge ingress for client traffic only; the 2 internal service-to-service calls (fanout-worker -> feed-aggregation-service, feed-aggregation-service -> ranking-service) go direct over the Docker network, no mTLS, no unified retry/circuit-breaking policy | A full mesh (Istio/Linkerd-style sidecars) covering internal traffic too, with mTLS between every service and consistent retry/timeout/circuit-breaking policy enforced centrally rather than per-service | At 2-3 internal call sites, sidecars are pure overhead; at real service-count scale, the alternative (every service hand-rolling its own retry/timeout logic, plaintext internally) becomes the bigger risk -- see [gateway.md](gateway.md#what-s-deliberately-not-behind-the-gateway) |
+| 19 | HTTP/3 scope | QUIC terminated at the Envoy edge only, for the feed read path specifically; Envoy still speaks HTTP/1.1 to feed-aggregation-service upstream | End-to-end HTTP/3 (or a purpose-built internal transport like gRPC) all the way to the origin service, and/or QUIC on every listener, not just one | The intra-datacenter Envoy-to-service hop isn't the latency problem QUIC solves (no packet loss, no high RTT, no connection migration to worry about on a Docker bridge network) -- terminating there and reusing a boring, well-understood HTTP/1.1 hop internally is the same trade real CDNs make. Full record, including how this was actually verified (not just configured): [gateway.md](gateway.md#why-http3-and-why-only-on-the-feed-read-path) |
 
-## The five worth going deeper on
+## The six worth going deeper on
 
 ### 1. Resharding tooling (row 1)
 
@@ -120,6 +122,22 @@ failing the whole fan-out" (see [learning-notes.md](learning-notes.md),
 bug #6, for the incident that motivated failing this way instead of
 crashing).
 
+### 6. Edge gateway, not a mesh -- and why QUIC stops there too (rows 18, 19)
+
+Both of these come from the same underlying judgment call: **put
+complexity where the problem actually is, not everywhere uniformly**.
+Client traffic crosses the real internet, hits unpredictable networks,
+and is the traffic a gateway and a modern transport protocol are for --
+so that's where Envoy and QUIC live. Internal service-to-service calls
+here cross a Docker bridge network with effectively zero loss and
+sub-millisecond RTT -- neither a service mesh's mTLS/retry machinery nor
+QUIC's loss-recovery machinery is solving a problem that exists on that
+hop. The interview-ready version of this: "I scoped the expensive
+infrastructure to where the failure modes it addresses actually occur,
+rather than applying it uniformly because it's available" -- and being
+able to name the two internal call sites that skip it, specifically, is
+what separates that answer from a slogan.
+
 ## If asked "what would you build first to make this production-ready?"
 
 Roughly in priority order, because each one either prevents data loss or
@@ -147,6 +165,11 @@ is a prerequisite for operating the system at all:
 7. **Trained ranking model** (row 7) -- requires (1) already in place to
    even know if the model is performing better than the heuristic it
    replaces.
+8. **TLS on the plaintext `:8080` listener and Envoy HA** (row 19,
+   [gateway.md](gateway.md#what-this-doesnt-solve)) -- lower urgency than
+   the rest of this list only because it's the newest piece; a real
+   deployment wouldn't ship a plaintext edge listener or a single
+   ingress instance for more than a demo.
 
 Notice auth (row 13) isn't "last" on any real list -- it's a prerequisite
 for launching to real users at all, just orthogonal to this particular
