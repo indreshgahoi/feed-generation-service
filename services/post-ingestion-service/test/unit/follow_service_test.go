@@ -1,4 +1,4 @@
-package service
+package service_test
 
 import (
 	"context"
@@ -6,10 +6,11 @@ import (
 	"testing"
 
 	"post-ingestion-service/internal/domain"
+	"post-ingestion-service/internal/service"
 )
 
 func TestFollowService_Follow_RejectsSelfFollow(t *testing.T) {
-	svc := NewFollowService(newMockGraphRepo())
+	svc := service.NewFollowService(newMockGraphRepo())
 	err := svc.Follow(context.Background(), 1, 1)
 	if !errors.Is(err, domain.ErrSelfFollow) {
 		t.Errorf("expected ErrSelfFollow, got %v", err)
@@ -18,7 +19,7 @@ func TestFollowService_Follow_RejectsSelfFollow(t *testing.T) {
 
 func TestFollowService_Follow_UpdatesFollowerCountAndCelebrityStatus(t *testing.T) {
 	graph := newMockGraphRepo()
-	svc := NewFollowService(graph)
+	svc := service.NewFollowService(graph)
 
 	// Simulate 25,001 followers to cross the celebrity threshold.
 	for i := int64(1); i <= 25001; i++ {
@@ -41,7 +42,7 @@ func TestFollowService_Follow_UpdatesFollowerCountAndCelebrityStatus(t *testing.
 
 func TestFollowService_Unfollow_DecrementsFollowerCount(t *testing.T) {
 	graph := newMockGraphRepo()
-	svc := NewFollowService(graph)
+	svc := service.NewFollowService(graph)
 
 	if err := svc.Follow(context.Background(), 2, 1); err != nil {
 		t.Fatal(err)
@@ -66,7 +67,7 @@ func TestFollowService_Unfollow_DecrementsFollowerCount(t *testing.T) {
 
 func TestFollowService_Unfollow_NeverGoesNegative(t *testing.T) {
 	graph := newMockGraphRepo()
-	svc := NewFollowService(graph)
+	svc := service.NewFollowService(graph)
 
 	// Unfollow without ever having followed -- follower count must clamp at 0.
 	if err := svc.Unfollow(context.Background(), 2, 1); err != nil {

@@ -17,8 +17,12 @@ const (
 	shardIDBits    = 8
 	shardIDShift   = sequenceBits
 	timestampShift = sequenceBits + shardIDBits
-	maxShardID     = (1 << shardIDBits) - 1
 	maxSequence    = (1 << sequenceBits) - 1
+
+	// MaxShardID is the largest shard ID an 8-bit shard field can hold --
+	// the hard ceiling on shard count this ID scheme supports without
+	// changing the bit layout (see doc/sharding.md).
+	MaxShardID = (1 << shardIDBits) - 1
 )
 
 // IDGenerator mints k-sortable, self-routing IDs for one specific shard.
@@ -33,7 +37,7 @@ type IDGenerator struct {
 }
 
 func NewIDGenerator(shardID int) *IDGenerator {
-	if shardID < 0 || shardID > maxShardID {
+	if shardID < 0 || shardID > MaxShardID {
 		panic("sharding: shardID out of range for an 8-bit ID field")
 	}
 	return &IDGenerator{shardID: shardID, lastTimestamp: -1}
@@ -62,5 +66,5 @@ func (g *IDGenerator) Next() int64 {
 // ExtractShardID recovers the shard that minted id -- a pure bit-shift,
 // never a network call or a lookup table.
 func ExtractShardID(id int64) int {
-	return int(id>>shardIDShift) & maxShardID
+	return int(id>>shardIDShift) & MaxShardID
 }

@@ -1,4 +1,4 @@
-package service
+package service_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"post-ingestion-service/internal/domain"
+	"post-ingestion-service/internal/service"
 )
 
 func TestUserService_CreateUser_WritesToAllThreeStores(t *testing.T) {
@@ -13,7 +14,7 @@ func TestUserService_CreateUser_WritesToAllThreeStores(t *testing.T) {
 	graph := newMockGraphRepo()
 	directory := newMockUsernameDirectory()
 	minter := newMockIDMinter(100)
-	svc := NewUserService(users, graph, directory, minter)
+	svc := service.NewUserService(users, graph, directory, minter)
 
 	user, err := svc.CreateUser(context.Background(), "alice")
 	if err != nil {
@@ -37,7 +38,7 @@ func TestUserService_CreateUser_WritesToAllThreeStores(t *testing.T) {
 }
 
 func TestUserService_CreateUser_RejectsEmptyUsername(t *testing.T) {
-	svc := NewUserService(newMockUserRepo(), newMockGraphRepo(), newMockUsernameDirectory(), newMockIDMinter(0))
+	svc := service.NewUserService(newMockUserRepo(), newMockGraphRepo(), newMockUsernameDirectory(), newMockIDMinter(0))
 	_, err := svc.CreateUser(context.Background(), "")
 	if !errors.Is(err, domain.ErrInvalidInput) {
 		t.Errorf("expected ErrInvalidInput for empty username, got %v", err)
@@ -49,7 +50,7 @@ func TestUserService_ListUsers_DegradesGracefullyWithoutGraphProfile(t *testing.
 	users.users[1] = domain.User{UserID: 1, Username: "orphan"}
 	graph := newMockGraphRepo() // no profile for user 1 -- simulates the Postgres/Neo4j sync gap
 
-	svc := NewUserService(users, graph, newMockUsernameDirectory(), newMockIDMinter(0))
+	svc := service.NewUserService(users, graph, newMockUsernameDirectory(), newMockIDMinter(0))
 	result, err := svc.ListUsers(context.Background())
 	if err != nil {
 		t.Fatalf("ListUsers returned error: %v", err)
@@ -68,7 +69,7 @@ func TestUserService_ListUsers_HydratesSocialProfile(t *testing.T) {
 	graph := newMockGraphRepo()
 	graph.profiles[1] = domain.SocialProfile{UserID: 1, Username: "star", FollowerCount: 30000, IsCelebrity: true}
 
-	svc := NewUserService(users, graph, newMockUsernameDirectory(), newMockIDMinter(0))
+	svc := service.NewUserService(users, graph, newMockUsernameDirectory(), newMockIDMinter(0))
 	result, err := svc.ListUsers(context.Background())
 	if err != nil {
 		t.Fatalf("ListUsers returned error: %v", err)

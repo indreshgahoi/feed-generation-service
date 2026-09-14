@@ -1,7 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 
-import type { IdMinter, NotificationRepository, PostCreatedEvent, UsernameDirectory } from '../domain/types.js';
-import { extractMentions, NotificationService } from './notificationService.js';
+import type { IdMinter, NotificationRepository, PostCreatedEvent, UsernameDirectory } from '../../src/domain/types.js';
+import { extractMentions, NotificationService } from '../../src/service/notificationService.js';
 
 class FakeUsernameDirectory implements UsernameDirectory {
   constructor(private readonly entries: Map<string, bigint>) {}

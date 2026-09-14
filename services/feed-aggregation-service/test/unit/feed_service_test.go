@@ -1,4 +1,4 @@
-package service
+package service_test
 
 import (
 	"context"
@@ -6,10 +6,11 @@ import (
 	"time"
 
 	"feed-aggregation-service/internal/domain"
+	"feed-aggregation-service/internal/service"
 )
 
-func defaultConfig() FeedConfig {
-	return FeedConfig{
+func defaultConfig() service.FeedConfig {
+	return service.FeedConfig{
 		InNetworkCandidateLimit: 500, CelebrityCandidateLimit: 50, VectorCandidateLimit: 250,
 		SeenStateTTLSeconds: 172800, PageSize: 20, MaxPostsPerAuthor: 2, TasteSeedPostLimit: 5,
 	}
@@ -25,16 +26,16 @@ type testFixture struct {
 	liked     *mockLiked
 	vector    *mockVector
 	ranking   *mockRanking
-	svc       *FeedService
+	svc       *service.FeedService
 }
 
-func newFixture(cfg FeedConfig) *testFixture {
+func newFixture(cfg service.FeedConfig) *testFixture {
 	f := &testFixture{
 		hotInbox: newMockHotInbox(), coldInbox: newMockColdInbox(), seenState: newMockSeenState(),
 		graph: newMockGraph(), postMeta: newMockPostMeta(), counters: newMockCounters(),
 		liked: newMockLiked(), vector: &mockVector{}, ranking: newMockRanking(),
 	}
-	f.svc = NewFeedService(f.hotInbox, f.coldInbox, f.seenState, f.graph, f.postMeta, f.counters, f.liked, f.vector, f.ranking, NewCursorCodec("test-secret-32-bytes-long-enough"), cfg)
+	f.svc = service.NewFeedService(f.hotInbox, f.coldInbox, f.seenState, f.graph, f.postMeta, f.counters, f.liked, f.vector, f.ranking, service.NewCursorCodec("test-secret-32-bytes-long-enough"), cfg)
 	return f
 }
 

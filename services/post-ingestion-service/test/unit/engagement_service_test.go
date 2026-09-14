@@ -1,4 +1,4 @@
-package service
+package service_test
 
 import (
 	"context"
@@ -6,15 +6,16 @@ import (
 	"testing"
 
 	"post-ingestion-service/internal/domain"
+	"post-ingestion-service/internal/service"
 )
 
-func newEngagementService() (*EngagementService, *mockLikeRepo, *mockCommentRepo, *mockUserRepo, *mockCounterRepo) {
+func newEngagementService() (*service.EngagementService, *mockLikeRepo, *mockCommentRepo, *mockUserRepo, *mockCounterRepo) {
 	likes := newMockLikeRepo()
 	comments := newMockCommentRepo()
 	users := newMockUserRepo()
 	counters := newMockCounterRepo()
 	minter := newMockIDMinter(0)
-	svc := NewEngagementService(likes, comments, users, counters, newMockLikeState(), newMockRateLimiter(), newMockModerator(), minter)
+	svc := service.NewEngagementService(likes, comments, users, counters, newMockLikeState(), newMockRateLimiter(), newMockModerator(), minter)
 	return svc, likes, comments, users, counters
 }
 
@@ -106,7 +107,7 @@ func TestEngagementService_ListComments_HydratesUsernamesAcrossShards(t *testing
 func TestEngagementService_Like_UpdatesReadYourOwnWritesCache(t *testing.T) {
 	likes, comments, users, counters := newMockLikeRepo(), newMockCommentRepo(), newMockUserRepo(), newMockCounterRepo()
 	likeState := newMockLikeState()
-	svc := NewEngagementService(likes, comments, users, counters, likeState, newMockRateLimiter(), newMockModerator(), newMockIDMinter(0))
+	svc := service.NewEngagementService(likes, comments, users, counters, likeState, newMockRateLimiter(), newMockModerator(), newMockIDMinter(0))
 
 	if _, err := svc.Like(context.Background(), 100, 1); err != nil {
 		t.Fatal(err)
@@ -127,7 +128,7 @@ func TestEngagementService_Like_RespectsRateLimit(t *testing.T) {
 	likes, comments, users, counters := newMockLikeRepo(), newMockCommentRepo(), newMockUserRepo(), newMockCounterRepo()
 	limiter := newMockRateLimiter()
 	limiter.allow = false
-	svc := NewEngagementService(likes, comments, users, counters, newMockLikeState(), limiter, newMockModerator(), newMockIDMinter(0))
+	svc := service.NewEngagementService(likes, comments, users, counters, newMockLikeState(), limiter, newMockModerator(), newMockIDMinter(0))
 
 	_, err := svc.Like(context.Background(), 100, 1)
 	if !errors.Is(err, domain.ErrRateLimited) {
@@ -139,7 +140,7 @@ func TestEngagementService_CreateComment_RejectsModeratedContent(t *testing.T) {
 	likes, comments, users, counters := newMockLikeRepo(), newMockCommentRepo(), newMockUserRepo(), newMockCounterRepo()
 	moderator := newMockModerator()
 	moderator.allow = false
-	svc := NewEngagementService(likes, comments, users, counters, newMockLikeState(), newMockRateLimiter(), moderator, newMockIDMinter(0))
+	svc := service.NewEngagementService(likes, comments, users, counters, newMockLikeState(), newMockRateLimiter(), moderator, newMockIDMinter(0))
 
 	_, err := svc.CreateComment(context.Background(), 1, 1, "check out spamlink.biz")
 	if !errors.Is(err, domain.ErrContentRejected) {
@@ -164,7 +165,7 @@ func TestEngagementService_ListComments_CollapsesConcurrentRequests(t *testing.T
 	comments.byPost[500] = []domain.Comment{{CommentID: 1, PostID: 500, UserID: 1, Body: "hi"}}
 
 	const n = 20
-	results := make(chan []CommentWithAuthor, n)
+	results := make(chan []service.CommentWithAuthor, n)
 	errs := make(chan error, n)
 	for i := 0; i < n; i++ {
 		go func() {

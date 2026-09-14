@@ -1,21 +1,23 @@
-package sharding
+package sharding_test
 
 import (
 	"fmt"
 	"math"
 	"testing"
+
+	"sharding"
 )
 
-func testConfig(numShards int) Config {
-	cfg := Config{VirtualNodesPerShard: 150}
+func testConfig(numShards int) sharding.Config {
+	cfg := sharding.Config{VirtualNodesPerShard: 150}
 	for i := 0; i < numShards; i++ {
-		cfg.Shards = append(cfg.Shards, ShardConfig{ID: i})
+		cfg.Shards = append(cfg.Shards, sharding.ShardConfig{ID: i})
 	}
 	return cfg
 }
 
 func TestShardForNewEntity_Deterministic(t *testing.T) {
-	ring := NewRing(testConfig(4))
+	ring := sharding.NewRing(testConfig(4))
 	for i := 0; i < 1000; i++ {
 		key := fmt.Sprintf("user-%d", i)
 		first := ring.ShardForNewEntity(key)
@@ -30,7 +32,7 @@ func TestShardForNewEntity_Deterministic(t *testing.T) {
 }
 
 func TestShardForNewEntity_RoughlyEvenDistribution(t *testing.T) {
-	ring := NewRing(testConfig(4))
+	ring := sharding.NewRing(testConfig(4))
 	counts := make(map[int]int)
 	const n = 20000
 	for i := 0; i < n; i++ {
@@ -58,8 +60,8 @@ func TestConsistentHashing_MinimalDisruptionOnResize(t *testing.T) {
 		keys[i] = fmt.Sprintf("user-%d", i)
 	}
 
-	before := NewRing(testConfig(4))
-	after := NewRing(testConfig(5)) // simulate adding a 5th shard
+	before := sharding.NewRing(testConfig(4))
+	after := sharding.NewRing(testConfig(5)) // simulate adding a 5th shard
 
 	moved := 0
 	for _, key := range keys {
@@ -78,17 +80,17 @@ func TestConsistentHashing_MinimalDisruptionOnResize(t *testing.T) {
 }
 
 func TestIDGenerator_ExtractShardID_RoundTrips(t *testing.T) {
-	for shardID := 0; shardID <= maxShardID; shardID += 17 {
-		gen := NewIDGenerator(shardID)
+	for shardID := 0; shardID <= sharding.MaxShardID; shardID += 17 {
+		gen := sharding.NewIDGenerator(shardID)
 		id := gen.Next()
-		if got := ExtractShardID(id); got != shardID {
+		if got := sharding.ExtractShardID(id); got != shardID {
 			t.Errorf("ExtractShardID(%d) = %d, want %d", id, got, shardID)
 		}
 	}
 }
 
 func TestIDGenerator_MonotonicWithinShard(t *testing.T) {
-	gen := NewIDGenerator(2)
+	gen := sharding.NewIDGenerator(2)
 	var last int64
 	for i := 0; i < 10000; i++ {
 		id := gen.Next()
@@ -105,11 +107,11 @@ func TestIDGenerator_RejectsOutOfRangeShardID(t *testing.T) {
 			t.Fatal("expected NewIDGenerator to panic for shardID > 255")
 		}
 	}()
-	NewIDGenerator(256)
+	sharding.NewIDGenerator(256)
 }
 
 func TestLoadConfig_MissingFile(t *testing.T) {
-	if _, err := LoadConfig("/nonexistent/shards.json"); err == nil {
+	if _, err := sharding.LoadConfig("/nonexistent/shards.json"); err == nil {
 		t.Fatal("expected error loading nonexistent config file")
 	}
 }

@@ -1,4 +1,4 @@
-package service
+package service_test
 
 import (
 	"context"
@@ -6,16 +6,17 @@ import (
 	"testing"
 
 	"post-ingestion-service/internal/domain"
+	"post-ingestion-service/internal/service"
 )
 
 func TestPostService_CreatePost_InheritsAuthorShard(t *testing.T) {
 	posts := &mockPostRepo{}
 	publisher := &mockPublisher{}
 	minter := newMockIDMinter(500)
-	svc := NewPostService(posts, publisher, minter)
+	svc := service.NewPostService(posts, publisher, minter)
 
 	const authorID = int64(42)
-	post, err := svc.CreatePost(context.Background(), CreatePostInput{
+	post, err := svc.CreatePost(context.Background(), service.CreatePostInput{
 		AuthorID: authorID, MediaURL: "https://example.com/a.jpg", MediaType: domain.MediaTypeImage,
 	})
 	if err != nil {
@@ -37,8 +38,8 @@ func TestPostService_CreatePost_InheritsAuthorShard(t *testing.T) {
 }
 
 func TestPostService_CreatePost_RejectsInvalidMediaType(t *testing.T) {
-	svc := NewPostService(&mockPostRepo{}, &mockPublisher{}, newMockIDMinter(0))
-	_, err := svc.CreatePost(context.Background(), CreatePostInput{
+	svc := service.NewPostService(&mockPostRepo{}, &mockPublisher{}, newMockIDMinter(0))
+	_, err := svc.CreatePost(context.Background(), service.CreatePostInput{
 		AuthorID: 1, MediaURL: "https://example.com/a.jpg", MediaType: domain.MediaType(9),
 	})
 	if !errors.Is(err, domain.ErrInvalidInput) {
@@ -47,8 +48,8 @@ func TestPostService_CreatePost_RejectsInvalidMediaType(t *testing.T) {
 }
 
 func TestPostService_CreatePost_RejectsMissingMediaURL(t *testing.T) {
-	svc := NewPostService(&mockPostRepo{}, &mockPublisher{}, newMockIDMinter(0))
-	_, err := svc.CreatePost(context.Background(), CreatePostInput{
+	svc := service.NewPostService(&mockPostRepo{}, &mockPublisher{}, newMockIDMinter(0))
+	_, err := svc.CreatePost(context.Background(), service.CreatePostInput{
 		AuthorID: 1, MediaType: domain.MediaTypeImage,
 	})
 	if !errors.Is(err, domain.ErrInvalidInput) {
@@ -62,9 +63,9 @@ func TestPostService_CreatePost_ReturnsPostEvenIfPublishFails(t *testing.T) {
 	// see the comment in post_service.go about needing a transactional
 	// outbox for this in a real system.
 	publisher := &mockPublisher{publishErr: errors.New("kafka unavailable")}
-	svc := NewPostService(&mockPostRepo{}, publisher, newMockIDMinter(0))
+	svc := service.NewPostService(&mockPostRepo{}, publisher, newMockIDMinter(0))
 
-	post, err := svc.CreatePost(context.Background(), CreatePostInput{
+	post, err := svc.CreatePost(context.Background(), service.CreatePostInput{
 		AuthorID: 1, MediaURL: "https://example.com/a.jpg", MediaType: domain.MediaTypeImage,
 	})
 	if err == nil {
