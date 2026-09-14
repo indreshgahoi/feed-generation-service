@@ -1,0 +1,224 @@
+:root {
+  --bg: #fafafa;
+  --panel: #ffffff;
+  --border: #dbdbdb;
+  --text: #262626;
+  --muted: #8e8e8e;
+  --accent: #0095f6;
+  --accent-hover: #1877f2;
+  --danger: #ed4956;
+  --in-network: #0095f6;
+  --celebrity: #f9ce34;
+  --vector: #8a3ab9;
+  --ad: #737373;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 12px 24px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.brand { font-weight: 700; font-size: 20px; }
+
+.user-switcher { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+.user-switcher select { padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); font-size: 14px; }
+
+.topbar-status { margin-left: auto; font-size: 13px; color: var(--muted); }
+
+.layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 560px) 280px;
+  gap: 20px;
+  max-width: 1140px;
+  margin: 24px auto;
+  padding: 0 16px;
+  align-items: start;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.panel h2 { margin: 0 0 8px; font-size: 15px; }
+
+.hint { color: var(--muted); font-size: 13px; line-height: 1.5; }
+
+.people-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+
+.person-row { display: flex; align-items: center; gap: 10px; }
+
+.avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: white; font-weight: 700; font-size: 14px; flex-shrink: 0;
+}
+
+.person-meta { flex: 1; min-width: 0; }
+.person-username { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 4px; }
+.person-sub { font-size: 12px; color: var(--muted); }
+
+.follow-btn {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: white;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.follow-btn.following {
+  background: var(--panel);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.composer {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 20px;
+}
+.composer textarea {
+  width: 100%;
+  border: none;
+  resize: vertical;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+.composer-row { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+
+.swatch-picker { display: flex; gap: 6px; }
+.swatch {
+  width: 24px; height: 24px; border-radius: 6px; cursor: pointer;
+  border: 2px solid transparent;
+}
+.swatch.selected { border-color: var(--text); }
+
+#postBtn {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-weight: 600;
+  cursor: pointer;
+}
+#postBtn:disabled { opacity: 0.5; cursor: default; }
+
+.feed-header { display: flex; align-items: center; justify-content: space-between; }
+.feed-header-actions { display: flex; gap: 8px; }
+
+.ghost-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text);
+}
+.ghost-btn:hover { background: var(--bg); }
+
+.feed-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 16px; }
+
+.post-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.post-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+}
+.post-header .username { font-weight: 600; font-size: 14px; }
+.post-header .timestamp { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+.post-media img { width: 100%; display: block; aspect-ratio: 4 / 3; object-fit: cover; background: #eee; }
+
+.post-body { padding: 10px 12px; }
+.post-caption { font-size: 14px; margin: 0 0 8px; }
+
+.post-actions { display: flex; align-items: center; gap: 14px; }
+.action-btn {
+  background: none;
+  border: none;
+  padding: 4px 0;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.action-btn:hover { opacity: 0.7; }
+.like-btn.liked .like-count { color: var(--danger); font-weight: 600; }
+.score-tag { margin-left: auto; font-size: 12px; color: var(--muted); }
+
+.comment-section { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
+.comment-list { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.comment-list strong { margin-right: 4px; }
+.comment-form { display: flex; gap: 8px; }
+.comment-form input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+}
+.comment-form button {
+  border: none;
+  background: var(--accent);
+  color: white;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.comment-form button:disabled { opacity: 0.5; cursor: default; }
+
+.badge {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+.badge.in-network { background: var(--in-network); }
+.badge.celebrity { background: var(--celebrity); }
+.badge.vector { background: var(--vector); }
+.badge.ad { background: var(--ad); }
+
+.source-tag { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); display: flex; align-items: center; }
+
+.ad-card { background: #fafafa; }
+
+.legend { list-style: none; padding: 0; margin: 0 0 12px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.legend .badge { margin-right: 8px; }
+
+.load-more { display: block; margin: 16px auto 0; }
+
+@media (max-width: 960px) {
+  .layout { grid-template-columns: 1fr; }
+}

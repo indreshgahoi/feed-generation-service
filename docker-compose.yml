@@ -1,0 +1,157 @@
+x-shard-defaults: &shard-defaults
+  image: postgres:16-alpine
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U ig_admin"]
+    interval: 5s
+    timeout: 5s
+    retries: 10
+
+services:
+  # --- Sharded relational tier (application-level sharding by user_id) ---
+  # 4 independent Postgres instances, identical schema (db/shard-schema.sql).
+  # Which shard owns a given row is decided by pkg/sharding (Go) /
+  # com.feed.sharding (Java) -- see doc/sharding.md. Note: `follows` is
+  # NOT here -- the social graph lives in the graph-db service below.
+  shard-0:
+    <<: *shard-defaults
+    container_name: ig-shard-0
+    environment:
+      POSTGRES_USER: ig_admin
+      POSTGRES_PASSWORD: ig_password
+      POSTGRES_DB: instagram_shard0
+    ports:
+      - "5441:5432"
+    volumes:
+      - shard0data:/var/lib/postgresql/data
+      - ./db/shard-schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+
+  shard-1:
+    <<: *shard-defaults
+    container_name: ig-shard-1
+    environment:
+      POSTGRES_USER: ig_admin
+      POSTGRES_PASSWORD: ig_password
+      POSTGRES_DB: instagram_shard1
+    ports:
+      - "5442:5432"
+    volumes:
+      - shard1data:/var/lib/postgresql/data
+      - ./db/shard-schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+
+  shard-2:
+    <<: *shard-defaults
+    container_name: ig-shard-2
+    environment:
+      POSTGRES_USER: ig_admin
+      POSTGRES_PASSWORD: ig_password
+      POSTGRES_DB: instagram_shard2
+    ports:
+      - "5443:5432"
+    volumes:
+      - shard2data:/var/lib/postgresql/data
+      - ./db/shard-schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+
+  shard-3:
+    <<: *shard-defaults
+    container_name: ig-shard-3
+    environment:
+      POSTGRES_USER: ig_admin
+      POSTGRES_PASSWORD: ig_password
+      POSTGRES_DB: instagram_shard3
+    ports:
+      - "5444:5432"
+    volumes:
+      - shard3data:/var/lib/postgresql/data
+      - ./db/shard-schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+
+  # --- Social graph: Neo4j, not sharded Postgres -- see doc/sharding.md
+  # "The social graph lives in Neo4j, not sharded Postgres" for why a
+  # follow edge is the wrong shape for relational sharding.
+  graph-db:
+    image: neo4j:5-community
+    container_name: ig-graph-db
+    environment:
+      NEO4J_AUTH: neo4j/feedpassword
+      NEO4J_PLUGINS: '[]'
+    ports:
+      - "7474:7474" # HTTP browser UI (http://localhost:7474)
+      - "7687:7687" # Bolt protocol (used by the Go/Java drivers)
+    volumes:
+      - graphdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: ig-feed-cache
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.8.4
+    container_name: ig-vector-engine
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrantdata:/qdrant/storage
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.1
+    container_name: ig-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,PLAINTEXT_HOST://0.0.0.0:9092'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: ig-blob-storage
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadminpassword
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  shard0data:
+  shard1data:
+  shard2data:
+  shard3data:
+  graphdata:
+  redisdata:
+  qdrantdata:
+  miniodata:

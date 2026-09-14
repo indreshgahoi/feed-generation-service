@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Feed Demo</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">📸 Feed Demo</div>
+    <div class="user-switcher">
+      <label for="userSelect">Viewing as</label>
+      <select id="userSelect"></select>
+    </div>
+    <div class="topbar-status" id="statusLine"></div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel people-panel">
+      <h2>People</h2>
+      <p class="hint">Follow/unfollow changes who shows up in your in-network feed.</p>
+      <ul id="peopleList" class="people-list"></ul>
+    </aside>
+
+    <section class="panel feed-panel">
+      <div class="composer">
+        <textarea id="captionInput" rows="2" placeholder="Share something... try @mentioning a username"></textarea>
+        <div class="composer-row">
+          <div class="swatch-picker" id="swatchPicker"></div>
+          <button id="postBtn">Post</button>
+        </div>
+      </div>
+
+      <div class="feed-header">
+        <h2>Feed</h2>
+        <div class="feed-header-actions">
+          <button id="refreshBtn" class="ghost-btn">Refresh</button>
+          <button id="resetSeenBtn" class="ghost-btn" title="Demo-only: clears your seen-state history so the small sample post pool shows up again">Reset seen (demo)</button>
+        </div>
+      </div>
+      <ul id="feedList" class="feed-list"></ul>
+      <button id="loadMoreBtn" class="ghost-btn load-more" hidden>Load more</button>
+      <p id="emptyState" class="hint" hidden>
+        No unseen posts left for this view. Real feeds refill from new
+        activity; this demo has a small fixed pool -- try
+        <strong>Reset seen (demo)</strong> above, follow someone new, or create a post.
+      </p>
+    </section>
+
+    <aside class="panel about-panel">
+      <h2>How this maps to the design</h2>
+      <ul class="legend">
+        <li><span class="badge in-network"></span> in-network — pulled from your Redis feed inbox</li>
+        <li><span class="badge celebrity"></span> celebrity — pulled from a celebrity's outbox</li>
+        <li><span class="badge vector"></span> vector — Qdrant ANN recall</li>
+        <li><span class="badge ad"></span> ad — inserted business rule (slot 3 / 8)</li>
+      </ul>
+      <p class="hint">
+        Posting hits <code>post-ingestion-service</code> (Go) → Kafka → the
+        Java fan-out worker, Python vector pipeline, and Node notification
+        service all react asynchronously. Give it a couple seconds after
+        posting, then hit Refresh.
+      </p>
+    </aside>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
