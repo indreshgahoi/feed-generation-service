@@ -1,0 +1,16 @@
+# Keeps the build context small for the two Go services, which build from
+# the repo root (they need go.work + pkg/sharding as siblings). Without
+# this, every `docker build` would ship the whole repo -- including other
+# services' node_modules/target/bin -- to the Docker daemon first.
+.git/
+logs/
+.pids/
+**/bin/
+**/target/
+**/node_modules/
+**/dist/
+**/__pycache__/
+**/data/cold-tier/
+envoy/certs/
+*.md
+doc/

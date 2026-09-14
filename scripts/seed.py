@@ -25,7 +25,7 @@ import urllib.request
 
 from neo4j import GraphDatabase
 
-INGESTION_URL = os.environ.get("INGESTION_URL", "http://localhost:4001")
+INGESTION_URL = os.environ.get("INGESTION_URL", "http://localhost:8080/api/ingest")
 NEO4J_URI = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USERNAME = os.environ.get("NEO4J_USERNAME", "neo4j")
 NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "feedpassword")
@@ -173,8 +173,8 @@ def main() -> None:
     simulate_celebrity_status(user_ids[CELEBRITY_USERNAME])
     create_sample_posts(user_ids)
 
-    print("\nDone. Open the web UI (default http://localhost:5173) or hit the feed API directly, e.g.:")
-    print(f"  curl 'http://localhost:4002/v1/feed?userId={user_ids['user_7']}'")
+    print("\nDone. Open the web UI (http://localhost:8080, behind the Envoy gateway) or hit the feed API directly, e.g.:")
+    print(f"  curl 'http://localhost:8080/api/feed?userId={user_ids['user_7']}'")
 
 
 if __name__ == "__main__":

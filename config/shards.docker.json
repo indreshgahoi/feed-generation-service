@@ -1,0 +1,9 @@
+{
+  "shards": [
+    { "id": 0, "postgresUrl": "postgresql://ig_admin:ig_password@shard-0:5432/instagram_shard0" },
+    { "id": 1, "postgresUrl": "postgresql://ig_admin:ig_password@shard-1:5432/instagram_shard1" },
+    { "id": 2, "postgresUrl": "postgresql://ig_admin:ig_password@shard-2:5432/instagram_shard2" },
+    { "id": 3, "postgresUrl": "postgresql://ig_admin:ig_password@shard-3:5432/instagram_shard3" }
+  ],
+  "virtualNodesPerShard": 150
+}

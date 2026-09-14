@@ -9,7 +9,15 @@ require (
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/segmentio/kafka-go v0.4.51
 	golang.org/x/sync v0.23.0
+	sharding v0.0.0-00010101000000-000000000000
 )
+
+// Resolved via go.work's `use` directive for local/host development
+// (`go build`/`go test` run with the workspace active); this replace is
+// the fallback that makes a standalone build -- e.g. the Dockerfile,
+// which copies only this module and pkg/sharding, not the whole
+// workspace -- resolvable with GOWORK=off.
+replace sharding => ../../pkg/sharding
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

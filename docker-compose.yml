@@ -6,6 +6,22 @@ x-shard-defaults: &shard-defaults
     timeout: 5s
     retries: 10
 
+# Shared env vars for every app service (container-network addresses, not
+# localhost -- see config/shards.docker.json and doc/architecture.md).
+x-app-env: &app-env
+  SHARD_CONFIG_PATH: /app/config/shards.docker.json
+  REDIS_ADDR: redis:6379
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_URL: redis://redis:6379
+  NEO4J_URI: bolt://graph-db:7687
+  NEO4J_USERNAME: neo4j
+  NEO4J_PASSWORD: feedpassword
+  KAFKA_BROKERS: kafka:29092
+  QDRANT_URL: http://qdrant:6333
+  RANKING_SERVICE_URL: http://ranking-service:4003
+  FEED_AGGREGATION_SERVICE_URL: http://feed-aggregation-service:4002
+
 services:
   # --- Sharded relational tier (application-level sharding by user_id) ---
   # 4 independent Postgres instances, identical schema (db/shard-schema.sql).
@@ -106,6 +122,13 @@ services:
       - "6334:6334"
     volumes:
       - qdrantdata:/qdrant/storage
+    healthcheck:
+      # No curl/wget/nc in this image (verified) -- bash's own /dev/tcp is
+      # the only TCP-check tool actually present.
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   kafka:
     image: confluentinc/cp-kafka:7.5.1
@@ -127,6 +150,30 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
       KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
       CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # One-shot: pre-creates the post-created topic against the INTERNAL
+  # listener (kafka:29092) once the broker is healthy, then exits.
+  # Auto-create-on-first-produce is racy (see scripts/create_topics.sh,
+  # kept for host-mode use against the external 9092 listener) -- app
+  # containers wait on this completing rather than the broker alone.
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.1
+    container_name: ig-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint:
+      - bash
+      - -c
+      - |
+        kafka-topics --bootstrap-server kafka:29092 \
+          --create --if-not-exists --topic post-created --partitions 3 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --list
 
   minio:
     image: quay.io/minio/minio:latest
@@ -146,6 +193,133 @@ services:
       timeout: 5s
       retries: 10
 
+  # --- Application services ---
+  # None of the Go services below get a Docker HEALTHCHECK: their runtime
+  # image is gcr.io/distroless/static-debian12, which has no shell to run
+  # one in. Envoy's own active health check against each service's
+  # /healthz (see envoy/envoy.yaml, doc/gateway.md) is the real readiness
+  # gate for traffic -- a more accurate check than a container-internal
+  # script anyway, since it's the same path a real client request takes.
+  post-ingestion-service:
+    build:
+      context: .
+      dockerfile: services/post-ingestion-service/Dockerfile
+    container_name: ig-post-ingestion
+    environment:
+      <<: *app-env
+      INGESTION_PORT: "4001"
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: "9000"
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadminpassword
+      MINIO_BUCKET: ig-media
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      shard-0: { condition: service_healthy }
+      shard-1: { condition: service_healthy }
+      shard-2: { condition: service_healthy }
+      shard-3: { condition: service_healthy }
+      graph-db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+      kafka-init: { condition: service_completed_successfully }
+
+  feed-aggregation-service:
+    build:
+      context: .
+      dockerfile: services/feed-aggregation-service/Dockerfile
+    container_name: ig-feed-aggregation
+    environment:
+      <<: *app-env
+      FEED_PORT: "4002"
+      COLD_TIER_DATA_DIR: /app/data/cold-tier
+    volumes:
+      - feedcolddata:/app/data/cold-tier
+      - ./config:/app/config:ro
+    depends_on:
+      shard-0: { condition: service_healthy }
+      shard-1: { condition: service_healthy }
+      shard-2: { condition: service_healthy }
+      shard-3: { condition: service_healthy }
+      graph-db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      qdrant: { condition: service_healthy }
+
+  ranking-service:
+    build: services/ranking-service
+    container_name: ig-ranking-service
+    environment:
+      RANKING_PORT: "4003"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:4003/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  fanout-worker:
+    build: services/fanout-worker
+    container_name: ig-fanout-worker
+    environment:
+      <<: *app-env
+      FEED_INBOX_MAX_ITEMS: "800"
+      ACTIVE_WITHIN_DAYS: "7"
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      shard-0: { condition: service_healthy }
+      shard-1: { condition: service_healthy }
+      shard-2: { condition: service_healthy }
+      shard-3: { condition: service_healthy }
+      graph-db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      kafka-init: { condition: service_completed_successfully }
+      feed-aggregation-service: { condition: service_started }
+
+  vector-pipeline:
+    build: services/vector-pipeline
+    container_name: ig-vector-pipeline
+    environment:
+      <<: *app-env
+    depends_on:
+      qdrant: { condition: service_healthy }
+      kafka-init: { condition: service_completed_successfully }
+
+  notification-service:
+    build: services/notification-service
+    container_name: ig-notification-service
+    environment:
+      <<: *app-env
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      shard-0: { condition: service_healthy }
+      shard-1: { condition: service_healthy }
+      shard-2: { condition: service_healthy }
+      shard-3: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      kafka-init: { condition: service_completed_successfully }
+
+  web-ui:
+    build: web-ui
+    container_name: ig-web-ui
+
+  # --- Single ingress -- see doc/gateway.md ---
+  envoy:
+    image: envoyproxy/envoy:v1.31-latest
+    container_name: ig-envoy
+    volumes:
+      - ./envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+      - ./envoy/certs:/etc/envoy/certs:ro
+    ports:
+      - "8080:8080"       # HTTP/1.1 + h2 -- web-ui, /api/ingest, /api/feed
+      - "8443:8443/udp"   # HTTP/3 (QUIC) -- /api/feed only, see envoy/envoy.yaml
+      - "9901:9901"       # admin/stats (local debugging only)
+    depends_on:
+      - post-ingestion-service
+      - feed-aggregation-service
+      - web-ui
+
 volumes:
   shard0data:
   shard1data:
@@ -155,3 +329,4 @@ volumes:
   redisdata:
   qdrantdata:
   miniodata:
+  feedcolddata:

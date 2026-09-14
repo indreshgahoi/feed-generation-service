@@ -7,7 +7,14 @@ require (
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/neo4j/neo4j-go-driver/v5 v5.28.4
 	github.com/redis/go-redis/v9 v9.22.0
+	sharding v0.0.0-00010101000000-000000000000
 )
+
+// Resolved via go.work's `use` directive for local/host development;
+// this replace is the fallback that makes a standalone build -- e.g. the
+// Dockerfile, which copies only this module and pkg/sharding, not the
+// whole workspace -- resolvable with GOWORK=off.
+replace sharding => ../../pkg/sharding
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

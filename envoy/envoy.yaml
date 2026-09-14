@@ -1,0 +1,152 @@
+# Single ingress for the whole system -- see doc/gateway.md for the full
+# design record (routing table, why service-to-service calls bypass this
+# entirely, and the edge-only-QUIC trade-off).
+#
+# Two listeners:
+#   - listener_http (TCP 8080): HTTP/1.1 and h2, routes /api/ingest,
+#     /api/feed, and everything else (web-ui). Advertises HTTP/3 support
+#     on feed responses via Alt-Svc so capable clients upgrade.
+#   - listener_h3 (UDP 8443): HTTP/3 (QUIC) for the feed READ path only
+#     -- the system's highest-QPS, most latency-sensitive path per the
+#     design doc, and the one most exposed to real client network
+#     conditions (mobile, lossy Wi-Fi) where QUIC actually pays for
+#     itself. QUIC is terminated HERE, at the edge; Envoy still speaks
+#     plain HTTP/1.1 to feed-aggregation-service upstream (same pattern
+#     real CDNs use: QUIC to the browser, HTTP/2 to origin).
+
+admin:
+  address:
+    socket_address: { address: 0.0.0.0, port_value: 9901 }
+
+static_resources:
+  listeners:
+    - name: listener_http
+      address:
+        socket_address: { address: 0.0.0.0, port_value: 8080 }
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_http
+                codec_type: AUTO
+                route_config:
+                  name: local_route
+                  virtual_hosts:
+                    - name: gateway
+                      domains: ["*"]
+                      routes:
+                        - match: { prefix: "/api/ingest/" }
+                          route:
+                            cluster: post_ingestion_service
+                            prefix_rewrite: "/"
+                        - match: { prefix: "/api/feed/" }
+                          route:
+                            cluster: feed_aggregation_service
+                            prefix_rewrite: "/"
+                          response_headers_to_add:
+                            # Advertises the QUIC listener so clients that
+                            # support HTTP/3 upgrade on their NEXT request
+                            # to this host -- the first request always
+                            # goes over TCP/TLS-less HTTP here since this
+                            # listener is plaintext (fine for a local
+                            # demo; a real deployment would terminate TLS
+                            # on this listener too).
+                            - header: { key: "alt-svc", value: 'h3=":8443"; ma=86400' }
+                              append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                        - match: { prefix: "/" }
+                          route:
+                            cluster: web_ui
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+    - name: listener_h3
+      udp_listener_config:
+        quic_options: {}
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 8443
+          protocol: UDP
+      filter_chains:
+        - transport_socket:
+            name: envoy.transport_sockets.quic
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.transport_sockets.quic.v3.QuicDownstreamTransport
+              downstream_tls_context:
+                common_tls_context:
+                  tls_certificates:
+                    - certificate_chain: { filename: "/etc/envoy/certs/dev.crt" }
+                      private_key: { filename: "/etc/envoy/certs/dev.key" }
+          filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_h3
+                codec_type: HTTP3
+                http3_protocol_options: {}
+                route_config:
+                  name: h3_route
+                  virtual_hosts:
+                    - name: feed_only
+                      domains: ["*"]
+                      routes:
+                        # This listener exists ONLY for the feed read path
+                        # -- see doc/gateway.md for why HTTP/3 isn't
+                        # extended to /api/ingest or web-ui.
+                        - match: { prefix: "/api/feed/" }
+                          route:
+                            cluster: feed_aggregation_service
+                            prefix_rewrite: "/"
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+  clusters:
+    - name: post_ingestion_service
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: post_ingestion_service
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: { address: post-ingestion-service, port_value: 4001 }
+      health_checks:
+        - timeout: 2s
+          interval: 5s
+          unhealthy_threshold: 3
+          healthy_threshold: 1
+          http_health_check: { path: "/healthz" }
+
+    - name: feed_aggregation_service
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: feed_aggregation_service
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: { address: feed-aggregation-service, port_value: 4002 }
+      health_checks:
+        - timeout: 2s
+          interval: 5s
+          unhealthy_threshold: 3
+          healthy_threshold: 1
+          http_health_check: { path: "/healthz" }
+
+    - name: web_ui
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: web_ui
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: { address: web-ui, port_value: 80 }
