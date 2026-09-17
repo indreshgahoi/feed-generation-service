@@ -39,58 +39,42 @@ load-bearing, not decorative.
 
 ## Documentation
 
-This README covers running it. For the deeper material, see [doc/](doc/index.md):
+This README covers running it. For the deeper material:
 
-- **[doc/architecture.md](doc/architecture.md)** -- every service, the sharded/graph/hot-cold data model, Redis/Kafka/Qdrant/Neo4j schemas
-- **[doc/sharding.md](doc/sharding.md)** -- application-level sharding design: self-routing IDs, consistent hashing, why the social graph lives in Neo4j instead of sharded Postgres, what's still unsolved
-- **[doc/caching.md](doc/caching.md)** -- the hot (Redis) / cold (BadgerDB) feed storage tier, and the RocksDB→BadgerDB substitution reasoning
-- **[doc/engagement-at-scale.md](doc/engagement-at-scale.md)** -- likes/comments at hyperscale: sharded Redis counters, read-your-own-writes, rate limiting, moderation, cache-stampede protection, and what's deliberately deferred
-- **[doc/flow.md](doc/flow.md)** -- step-by-step walkthrough of one post's write path and one feed's read path through the sharded system, with file references
-- **[doc/gateway.md](doc/gateway.md)** -- the Envoy gateway: routing table, why service-to-service calls bypass it, and the HTTP/3 (QUIC) listener scoped to the feed read path
-- **[doc/trade-offs.md](doc/trade-offs.md)** -- remaining local-demo choice vs. real production-grade choice, written for system-design-interview prep
-- **[doc/learning-notes.md](doc/learning-notes.md)** -- what building the same service in 6 languages actually teaches you, plus the real bugs (including a process-crashing nil-pointer panic from a malformed shard ID) hit building this repo and the general lesson each is an instance of
+| Doc | What's in it |
+|---|---|
+| [doc/rfc-system-design.md](doc/rfc-system-design.md) | **Start here for the design as a whole.** RFC-style write-up of the full system -- goals, architecture, write/read paths, key decisions and their alternatives, trade-offs, prioritized follow-up -- with links out to every doc below for depth |
+| [doc/architecture.md](doc/architecture.md) | Every service, the sharded/graph/hot-cold data model, Redis/Kafka/Qdrant/Neo4j schemas |
+| [doc/wire-protocols.md](doc/wire-protocols.md) | gRPC/Protobuf for the 2 internal service-to-service calls, FlatBuffers for the Kafka event -- and why the ranking call deliberately uses both, layered |
+| [doc/sharding.md](doc/sharding.md) | Application-level sharding design: self-routing IDs, consistent hashing, why the social graph lives in Neo4j instead of sharded Postgres, what's still unsolved |
+| [doc/caching.md](doc/caching.md) | The hot (Redis) / cold (BadgerDB) feed storage tier, and the RocksDB→BadgerDB substitution reasoning |
+| [doc/engagement-at-scale.md](doc/engagement-at-scale.md) | Likes/comments at hyperscale: sharded Redis counters, read-your-own-writes, rate limiting, moderation, cache-stampede protection, and what's deliberately deferred |
+| [doc/flow.md](doc/flow.md) | Step-by-step walkthrough of one post's write path and one feed's read path through the sharded system, with file references |
+| [doc/gateway.md](doc/gateway.md) | The Envoy gateway: routing table, why service-to-service calls bypass it, and the HTTP/3 (QUIC) listener scoped to the feed read path |
+| [doc/trade-offs.md](doc/trade-offs.md) | Remaining local-demo choice vs. real production-grade choice, written for system-design-interview prep |
+| [doc/learning-notes.md](doc/learning-notes.md) | What building the same service in 6 languages actually teaches you, plus the real bugs hit building this repo and the general lesson each is an instance of |
+
+**Reading order:** just want to run it -- stay here. Want the design as a
+whole, start to finish, before touching code --
+[rfc-system-design.md](doc/rfc-system-design.md). Want the mental model
+before reading code -- [architecture.md](doc/architecture.md) then
+[flow.md](doc/flow.md). Prepping for a system-design interview --
+[trade-offs.md](doc/trade-offs.md), written to be read standalone.
 
 ## Architecture
 
 Every application service runs as a Docker Compose container now, and
-the **Envoy gateway is the only door in** for client traffic -- see
-[doc/gateway.md](doc/gateway.md) for the full routing design, including
-why 2 internal service-to-service calls deliberately bypass it.
-
-```
-                              Client
-                                 |
-                     ┌───────────────────────┐
-                     │   Envoy gateway (:8080  │
-                     │   HTTP, :8443 HTTP/3)    │
-                     └───┬───────────┬────────┘
-              /api/ingest│  /api/feed│         /*
-                         ▼           ▼           ▼
-      post-ingestion-service   feed-aggregation-service   web-ui (nginx)
-             (Go)                      (Go)
-               |                        |  ▲
-               ▼                        |  └── ranking-service (Rust)
-   shard N of 4 Postgres instances      |      composite score, direct
-   Neo4j (social graph)                 |      call, NOT via Envoy
-   Redis (sharded counters,             |
-     rate limiting, RYOW cache)         ▼
-               |                Redis hot inbox / celebrity outbox
-               ▼                BadgerDB cold tier (promotes on read)
-        Kafka "post-created"    Qdrant ANN search
-               |
-   ┌───────────┼───────────────────┐
-   ▼           ▼                   ▼
-fanout-worker  vector-pipeline   notification-service
-(Java)         (Python)          (Node)
-  |               |                  |
-Neo4j "who     Qdrant upsert      Redis username directory ->
-follows me" ->                    sharded Postgres notifications
-cross-shard active-filter ->
-Redis hot inbox / celebrity
-outbox / BadgerDB cold tier
-(direct call to feed-aggregation-
- service, NOT via Envoy)
-```
+the **Envoy gateway is the only door in** for client traffic:
+`/api/ingest` and `/api/feed` route to post-ingestion-service and
+feed-aggregation-service (Go); everything else falls through to the
+static web UI. Fan-out (Java), vector embedding (Python), and
+notifications (Node) run as independent Kafka consumers of the
+`post-created` topic; ranking (Rust) is a stateless scorer called
+directly by feed-aggregation-service. See
+[doc/architecture.md](doc/architecture.md) for the full component diagram
+and data model, [doc/gateway.md](doc/gateway.md) for why the 2 internal
+service-to-service calls deliberately bypass Envoy (they're gRPC, not
+HTTP -- see [doc/wire-protocols.md](doc/wire-protocols.md)).
 
 ## Prerequisites
 
@@ -149,13 +133,15 @@ bash scripts/verify_shard_parity.sh 10000
 ## Services in detail
 
 Port numbers below (`:4001`, `:4002`, `:4003`) are each service's
-**container-internal** port -- none of them are published to the host
+**container-internal** HTTP port -- none of them are published to the host
 anymore. Everything client-facing goes through Envoy at `:8080`/`:8443`
 (see [doc/gateway.md](doc/gateway.md)); reaching a service directly by
 port is only possible from inside the Compose network (e.g. one
 container calling another by service name), which is exactly how
 fanout-worker's cold-tier call and feed-aggregation-service's ranking
-call work.
+call work -- both over gRPC, on their own separate ports (`:4102`,
+`:4103`), not the HTTP ports below. See
+[doc/wire-protocols.md](doc/wire-protocols.md).
 
 ### post-ingestion-service (Go) -- `:4001`
 - `POST /v1/uploads/presign` -- returns a MinIO pre-signed PUT URL (direct-to-blob upload, bypassing the app server, per §3).
@@ -176,8 +162,9 @@ IDs by shard via bit-shift, dropping any malformed/out-of-range ID rather
 than failing the whole fan-out) to split followers into active vs.
 dormant. Active followers get pushed straight into their Redis hot inbox
 (`feed:user:<id>`, capped at `FEED_INBOX_MAX_ITEMS`); dormant followers
-are appended to the **BadgerDB cold tier** via an HTTP call to
-feed-aggregation-service, instead of being dropped.
+are appended to the **BadgerDB cold tier** via a gRPC call to
+feed-aggregation-service (see [doc/wire-protocols.md](doc/wire-protocols.md)),
+instead of being dropped.
 
 ### vector-pipeline (Python)
 Computes a real sentence embedding of the post caption (`all-MiniLM-L6-v2`,
@@ -194,8 +181,9 @@ anymore), mints the notification's ID **inheriting the recipient's shard**
 using a BigInt Snowflake generator (IDs exceed `Number.MAX_SAFE_INTEGER`),
 and writes the row to that shard's Postgres.
 
-### ranking-service (Rust) -- `:4003`
-`POST /rank` implements the composite scoring objective from §4:
+### ranking-service (Rust) -- `:4003` (HTTP `/healthz`), `:4103` (gRPC)
+`RankingService.Rank` (gRPC; see [doc/wire-protocols.md](doc/wire-protocols.md))
+implements the composite scoring objective from §4:
 
 ```
 Score = w1*P(Like) + w2*P(Comment) + w3*P(Share) + w4*P(Dwell>5s) - w5*P(Hide)
@@ -207,11 +195,11 @@ with transparent heuristics (recency decay x normalized engagement counts)
 instead. Fully stateless -- no shard-awareness needed, since candidates
 arrive pre-hydrated with the counts it needs.
 
-### feed-aggregation-service (Go) -- `:4002`
+### feed-aggregation-service (Go) -- `:4002` (HTTP), `:4102` (gRPC)
 `GET /v1/feed?userId=&cursor=` runs the full read-path funnel from §4:
 1. Fan-in candidate retrieval, concurrently: Redis hot inbox (falling back to and promoting from the BadgerDB cold tier if empty, see [doc/caching.md](doc/caching.md)), celebrity outboxes of celebrities the user follows (via Neo4j), and Qdrant ANN search against a "taste vector" (the average embedding of the user's own/followed-users' recent posts, standing in for a learned two-tower user embedding -- itself a cross-shard scatter-gather over post metadata, since followees' posts live on their own shards).
 2. Seen-state filter -- a Redis ZSET of last-shown timestamps per user, dropping anything shown in the last 48h.
-3. Hydration -- post metadata and like/comment counts, fetched by grouping candidate IDs by shard (bit-shift, no lookup) and fanning out concurrently; any candidate with a malformed/out-of-range shard ID is dropped and logged rather than failing the whole batch (see [doc/learning-notes.md](doc/learning-notes.md), bug #6).
+3. Hydration -- post metadata and like/comment counts, fetched by grouping candidate IDs by shard (bit-shift, no lookup) and fanning out concurrently; any candidate with a malformed/out-of-range shard ID is dropped and logged rather than failing the whole batch (see [doc/learning-notes.md](doc/learning-notes.md), bug #5).
 4. Calls `ranking-service` for composite scoring.
 5. Applies the "max 2 posts per author" diversity rule and inserts synthetic ads at slots 3 and 8.
 6. Returns an AES-256-GCM encrypted opaque cursor for the next page.
@@ -254,25 +242,30 @@ those is a deliberate, named trade-off -- see
 still simplified, why the production-grade choice wins at scale, and what
 an interviewer would likely ask as a follow-up. What's **not** on that
 list anymore -- because it's genuinely implemented, not just discussed --
-is sharding itself, the social graph store, hot/cold feed storage, and a
-real edge gateway with HTTP/3 on the feed read path; see
-[doc/sharding.md](doc/sharding.md), [doc/caching.md](doc/caching.md),
-[doc/engagement-at-scale.md](doc/engagement-at-scale.md), and
-[doc/gateway.md](doc/gateway.md) for those.
+is sharding itself, the social graph store, hot/cold feed storage, a real
+edge gateway with HTTP/3 on the feed read path, and gRPC/Protobuf +
+FlatBuffers wire formats on the internal service calls and Kafka event;
+see [doc/sharding.md](doc/sharding.md), [doc/caching.md](doc/caching.md),
+[doc/engagement-at-scale.md](doc/engagement-at-scale.md),
+[doc/gateway.md](doc/gateway.md), and
+[doc/wire-protocols.md](doc/wire-protocols.md) for those.
 
 ## Toolchain notes
 
 - **Running the system only needs Docker** -- `scripts/run_all.sh` is
   `docker-compose up --build` under the hood. Everything below is about
-  the local dev/test loop (`scripts/build_all.sh`), not about running
-  the app.
-- Go and Rust are **not** installed via apt/sudo here -- Go was unpacked from the official tarball into `~/go-toolchain`, Rust via `rustup` into `~/.cargo`. `scripts/env.sh` puts both on `PATH`; source it (or use the provided scripts, which already do) rather than relying on a system-wide install.
-- Java: the system default `java` may point at an older JDK; the fan-out worker needs 17+. `scripts/env.sh` pins `JAVA_HOME` to a JDK 21 install if present.
-- Python deps are installed with `pip3 install --user` (no venv) because `python3-venv` isn't installed and requires `sudo apt install python3-venv`. If you'd rather use a venv, install that package and adjust `scripts/build_all.sh`. The `vector-pipeline` Docker image is pinned to **Python 3.10** (matching this host toolchain), not 3.12 -- `kafka-python==2.0.2`'s vendored `six` shim breaks on 3.12, found by actually running the container.
-- **MinIO's `minio/minio` Docker Hub image now requires a paid login.** `docker-compose.yml` uses `quay.io/minio/minio:latest` instead (MinIO's official free mirror).
+  the local dev/test loop (`scripts/build_all.sh` and
+  `scripts/gen_schemas.sh`), not about running the app.
+- `scripts/env.sh` puts Go, Rust, JDK 21 (the fan-out worker needs 17+),
+  and the schema compilers (`protoc`, `flatc`) on `PATH` for the dev
+  loop -- source it, or use the provided scripts, which already do.
+- The `vector-pipeline` Docker image is pinned to **Python 3.10**, not
+  3.12 -- `kafka-python==2.0.2`'s vendored `six` shim breaks on 3.12,
+  found by actually running the container (see
+  [doc/learning-notes.md](doc/learning-notes.md)).
 - The 4 Postgres shards are mapped to host ports **5441-5444** (not 5432), and Neo4j's Bolt port is the standard **7687**. There are **two** shard config files: `config/shards.json` (host ports, used by `go test`, `verify_shard_parity.sh`, and anything run directly on the host) and `config/shards.docker.json` (container-network addresses like `shard-0:5432`, used by every containerized app service). Same topology, different addressing -- see `doc/architecture.md`.
 - Kafka topics are pre-created by the one-shot `kafka-init` Compose service against the internal listener (`kafka:29092`) before any consumer starts -- auto-create-on-first-produce is racy (the first publish can land before the topic finishes creating and gets dropped). `scripts/create_topics.sh` still exists for host-mode use against the external listener (`localhost:9092`).
-- `go.work` ties `pkg/sharding` into both Go services as a local module for host development (no package registry needed). Each Go service's own `go.mod` also carries a `replace sharding => ../../pkg/sharding` fallback specifically for its Docker build (`GOWORK=off`), since a container build only copies one service, not the whole workspace, and `go.work` would otherwise demand every module it lists exist on disk. `scripts/build_all.sh` builds and tests the workspace first, then runs `scripts/verify_shard_parity.sh` as a build gate before considering the build done.
+- `go.work` ties `pkg/sharding` into both Go services as a local module for host development (no package registry needed). Each Go service's own `go.mod` also carries a `replace sharding => ../../pkg/sharding` fallback specifically for its Docker build (`GOWORK=off`), since a container build only copies one service, not the whole workspace, and `go.work` would otherwise demand every module it lists exist on disk. `scripts/build_all.sh` builds and tests the workspace first, then runs `scripts/verify_shard_parity.sh` and `scripts/verify_schema_gen.sh` as build gates before considering the build done.
 
 ## Repo layout
 
@@ -285,11 +278,15 @@ db/shard-schema.sql      schema applied identically to all 4 shards (no `follows
 config/shards.json       shard topology, HOST ports -- read by go test / verify_shard_parity.sh / host-mode runs
 config/shards.docker.json  same topology, CONTAINER-network addresses -- read by every containerized app service
 pkg/sharding/            shared Go module: consistent-hash ring + self-routing Snowflake IDs (also a CLI for parity checks)
+schemas/proto/           Protobuf schemas for the 2 internal gRPC calls (see doc/wire-protocols.md)
+schemas/fbs/             FlatBuffers schemas for the Kafka event and the ranking call's payload
 .env / .env.example      config for host-mode dev/tooling (docker-compose.yml sets its own container-network env vars inline)
-doc/                     architecture, sharding, caching, engagement-at-scale, gateway, flow, trade-offs, learning notes (see doc/index.md)
+doc/                     architecture, wire-protocols, sharding, caching, engagement-at-scale, gateway, flow, trade-offs, learning notes
 scripts/
-  env.sh                 puts Go/Rust/JDK21 on PATH (for build_all.sh, not for running the app)
-  build_all.sh           local dev/test loop: go/cargo/mvn/npm test + the shard-parity gate (does NOT run the app)
+  env.sh                 puts Go/Rust/JDK21/protoc/flatc on PATH (for build_all.sh, not for running the app)
+  build_all.sh           local dev/test loop: go/cargo/mvn/npm test + the shard-parity and schema-parity gates (does NOT run the app)
+  gen_schemas.sh         regenerates committed protobuf/FlatBuffers code from schemas/ (see doc/wire-protocols.md)
+  verify_schema_gen.sh   asserts committed generated code matches schemas/ -- the same idiom as verify_shard_parity.sh
   gen_dev_certs.sh        generates Envoy's self-signed dev TLS cert if missing
   run_all.sh             docker-compose up --build -- the only way the app actually runs
   stop_all.sh            docker-compose down
