@@ -23,4 +23,5 @@ WORKDIR /app
 # not a system of record, so losing it is a degradation, not data loss.
 VOLUME ["/app/data/cold-tier"]
 EXPOSE 4002
+EXPOSE 4102
 ENTRYPOINT ["/app/feed-aggregation-service"]

@@ -1,28 +1,24 @@
-// Package kafka implements domain.EventPublisher.
+// Package kafka implements domain.EventPublisher. The `post-created`
+// event is FlatBuffers-encoded, not JSON -- it's produced once here and
+// deserialized independently by 3 consumers in 3 languages
+// (fanout-worker, vector-pipeline, notification-service), so each of
+// them gets zero-copy field access instead of a full parse. See
+// doc/wire-protocols.md.
 package kafka
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"strconv"
-	"time"
 
+	flatbuffers "github.com/google/flatbuffers/go"
 	"github.com/segmentio/kafka-go"
+
+	events "post-ingestion-service/internal/genfbs/feed/events"
 
 	"post-ingestion-service/internal/domain"
 )
 
 const postCreatedTopic = "post-created"
-
-type postCreatedEvent struct {
-	PostID    string `json:"postId"`
-	UserID    string `json:"userId"`
-	MediaURL  string `json:"mediaUrl"`
-	MediaType int16  `json:"mediaType"`
-	Caption   string `json:"caption"`
-	CreatedAt string `json:"createdAt"`
-}
 
 type Publisher struct {
 	writer *kafka.Writer
@@ -44,21 +40,31 @@ func (p *Publisher) Close() error {
 }
 
 func (p *Publisher) PublishPostCreated(ctx context.Context, post domain.Post) error {
-	event := postCreatedEvent{
-		PostID:    strconv.FormatInt(post.PostID, 10),
-		UserID:    strconv.FormatInt(post.UserID, 10),
-		MediaURL:  post.MediaURL,
-		MediaType: int16(post.MediaType),
-		Caption:   post.Caption,
-		CreatedAt: post.CreatedAt.Format(time.RFC3339),
-	}
-	payload, err := json.Marshal(event)
-	if err != nil {
-		return fmt.Errorf("marshal post-created event: %w", err)
+	if post.PostID < 0 || post.UserID < 0 {
+		return fmt.Errorf("post-created event requires non-negative IDs, got postId=%d userId=%d", post.PostID, post.UserID)
 	}
 
+	b := flatbuffers.NewBuilder(0)
+	mediaURLOff := b.CreateString(post.MediaURL)
+	captionOff := b.CreateString(post.Caption)
+
+	events.PostCreatedEventStart(b)
+	events.PostCreatedEventAddPostId(b, uint64(post.PostID))
+	events.PostCreatedEventAddUserId(b, uint64(post.UserID))
+	events.PostCreatedEventAddMediaUrl(b, mediaURLOff)
+	events.PostCreatedEventAddMediaType(b, events.MediaType(post.MediaType))
+	events.PostCreatedEventAddCaption(b, captionOff)
+	events.PostCreatedEventAddCreatedAt(b, uint64(post.CreatedAt.UnixMilli()))
+	eventOff := events.PostCreatedEventEnd(b)
+	b.Finish(eventOff)
+
+	// Key = author/user ID (as a decimal string, matching how IDs are
+	// represented everywhere else in this service's routing logic) --
+	// unchanged from the JSON wire format, so partitioning behavior
+	// (all of one author's posts stay in order on one partition) is
+	// identical.
 	return p.writer.WriteMessages(ctx, kafka.Message{
-		Key:   []byte(event.UserID),
-		Value: payload,
+		Key:   fmt.Appendf(nil, "%d", post.UserID),
+		Value: b.FinishedBytes(),
 	})
 }

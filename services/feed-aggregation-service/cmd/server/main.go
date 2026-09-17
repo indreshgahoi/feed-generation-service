@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,9 +13,11 @@ import (
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
+	"google.golang.org/grpc"
 
 	"sharding"
 
+	coldtierpb "feed-aggregation-service/internal/genproto/coldtier"
 	"feed-aggregation-service/internal/service"
 	"feed-aggregation-service/internal/storage/badger"
 	"feed-aggregation-service/internal/storage/neo4j"
@@ -22,6 +25,7 @@ import (
 	"feed-aggregation-service/internal/storage/qdrant"
 	"feed-aggregation-service/internal/storage/rankingclient"
 	redisstore "feed-aggregation-service/internal/storage/redis"
+	transportgrpc "feed-aggregation-service/internal/transport/grpc"
 	transporthttp "feed-aggregation-service/internal/transport/http"
 )
 
@@ -72,7 +76,12 @@ func main() {
 	logger.Info("opened BadgerDB cold-tier store", "dataDir", cfg.ColdTierDataDir)
 
 	vectorRepo := qdrant.NewVectorRepo(cfg.QdrantURL)
-	rankingClient := rankingclient.New(cfg.RankingServiceURL)
+	rankingClient, err := rankingclient.New(cfg.RankingServiceGRPCAddr)
+	if err != nil {
+		logger.Error("failed to create ranking-service gRPC client", "error", err)
+		os.Exit(1)
+	}
+	defer rankingClient.Close()
 
 	// --- Repositories ---
 	hotInbox := redisstore.NewHotInboxRepo(redisClient)
@@ -96,8 +105,7 @@ func main() {
 	)
 
 	handlers := transporthttp.Handlers{
-		Feed:     transporthttp.NewFeedHandler(feedService),
-		ColdTier: transporthttp.NewColdTierHandler(coldInbox),
+		Feed: transporthttp.NewFeedHandler(feedService),
 	}
 	router := transporthttp.NewRouter(handlers)
 
@@ -108,10 +116,25 @@ func main() {
 		WriteTimeout: 10 * time.Second,
 	}
 
+	// gRPC server for the cold-tier append call -- internal,
+	// service-to-service only (called by fanout-worker), never routed
+	// through the Envoy gateway. See doc/gateway.md and doc/wire-protocols.md.
+	grpcServer := grpc.NewServer()
+	coldtierpb.RegisterColdTierServiceServer(grpcServer, transportgrpc.NewColdTierServer(coldInbox))
+	grpcListener, err := net.Listen("tcp", ":"+cfg.GRPCPort)
+	if err != nil {
+		logger.Error("failed to open gRPC listener", "error", err, "port", cfg.GRPCPort)
+		os.Exit(1)
+	}
+
 	serverErr := make(chan error, 1)
 	go func() {
-		logger.Info("feed-aggregation-service listening", "port", cfg.Port)
+		logger.Info("feed-aggregation-service HTTP listening", "port", cfg.Port)
 		serverErr <- srv.ListenAndServe()
+	}()
+	go func() {
+		logger.Info("feed-aggregation-service gRPC listening", "port", cfg.GRPCPort)
+		serverErr <- grpcServer.Serve(grpcListener)
 	}()
 
 	stop := make(chan os.Signal, 1)
@@ -119,7 +142,7 @@ func main() {
 
 	select {
 	case err := <-serverErr:
-		if err != nil && err != http.ErrServerClosed {
+		if err != nil && err != http.ErrServerClosed && err != grpc.ErrServerStopped {
 			logger.Error("server failed", "error", err)
 			os.Exit(1)
 		}
@@ -130,5 +153,6 @@ func main() {
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			logger.Error("graceful shutdown failed", "error", err)
 		}
+		grpcServer.GracefulStop()
 	}
 }

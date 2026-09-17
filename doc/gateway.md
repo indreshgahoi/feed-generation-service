@@ -40,10 +40,12 @@ server itself is wedged.
 
 Envoy here is an **edge ingress for client traffic**, not a service mesh
 for internal traffic. Two service-to-service calls in this system
-bypass it entirely, over Compose's own network via service-name DNS:
+bypass it entirely, over Compose's own network via service-name DNS --
+both gRPC, not HTTP (see [doc/wire-protocols.md](wire-protocols.md) for
+why, including the one call that also carries a FlatBuffers payload):
 
-- fanout-worker's cold-tier append: `POST http://feed-aggregation-service:4002/internal/cold-tier/append`
-- feed-aggregation-service's ranking call: `POST http://ranking-service:4003/rank`
+- fanout-worker's cold-tier append: `ColdTierService.Append` at `feed-aggregation-service:4102`
+- feed-aggregation-service's ranking call: `RankingService.Rank` at `ranking-service:4103`
 
 This is a deliberate, standard boundary (the same one a real
 ingress-controller-plus-mesh split draws), not an oversight: routing
@@ -95,11 +97,11 @@ header.
 
 ## Verification: a real HTTP/3 request, not an assumed one
 
-The host's `curl` in this environment is 7.81 (2022), built without
-QUIC/HTTP-3 support -- `curl --http3` isn't an option here, so "curl it
-and see" wasn't available for this specific listener. Rather than assert
-HTTP/3 works because the config looks right, this was verified with an
-actual QUIC client: [`aioquic`](https://github.com/aiortc/aioquic)
+HTTP/3 client support in `curl` depends on how it was built (QUIC support
+isn't universal even in recent versions), so "curl it and see" isn't a
+given for this specific listener. Rather than assert HTTP/3 works because
+the config looks right, this was verified with an actual QUIC client:
+[`aioquic`](https://github.com/aiortc/aioquic)
 (`pip3 install --user aioquic`), a pure-Python QUIC/HTTP-3 implementation
 with no native system library dependency, driving a real TLS 1.3 + QUIC
 handshake and an HTTP/3 GET against `https://localhost:8443/api/feed/v1/feed?userId=...`.

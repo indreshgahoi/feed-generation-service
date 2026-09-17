@@ -3,13 +3,19 @@
 // convention in Go; this is the right-sized Node/TS equivalent for a
 // service this small (one use case: react to a post-created event).
 
+// postId/userId are bigint and createdAt is unix epoch millis -- matching
+// schemas/fbs/post_created.fbs directly, since the wire format is
+// FlatBuffers, not JSON (see doc/wire-protocols.md). This is a better fit
+// than the old JSON path's stringified IDs: this service already mints
+// its own bigint Snowflake IDs (see IdMinter below), so decoding straight
+// into bigint removes a string<->bigint conversion instead of adding one.
 export interface PostCreatedEvent {
-  postId: string;
-  userId: string;
+  postId: bigint;
+  userId: bigint;
   mediaUrl: string;
   mediaType: number;
   caption: string;
-  createdAt: string;
+  createdAt: number;
 }
 
 /** Backed by the Redis directory post-ingestion-service writes at signup

@@ -1,0 +1,33 @@
+// The `post-created` Kafka event: published once by post-ingestion-service
+// (Go), consumed independently by fanout-worker (Java), vector-pipeline
+// (Python), and notification-service (Node/TS). FlatBuffers instead of
+// JSON specifically because 3 different-language consumers each pay a
+// full parse cost on every message; FlatBuffers gives each of them
+// zero-copy field access straight into the received bytes instead.
+// See doc/wire-protocols.md.
+namespace feed.events;
+
+// Mirrors post-ingestion-service's Go MediaType enum
+// (internal/domain/entities.go). Unspecified = 0 is FlatBuffers' required
+// enum zero-value (Go's MediaType has no such value; this is purely a
+// wire-schema requirement, never a value the producer emits).
+enum MediaType : byte {
+  Unspecified = 0,
+  Image = 1,
+  Video = 2,
+  Carousel = 3,
+}
+
+table PostCreatedEvent {
+  post_id: uint64;
+  user_id: uint64;
+  media_url: string;
+  media_type: MediaType;
+  caption: string;
+  // Unix epoch milliseconds. FlatBuffers has no datetime type, and using
+  // an integer instead of an RFC3339 string also removes a string-parse
+  // step from every one of the 3 consumers.
+  created_at: uint64;
+}
+
+root_type PostCreatedEvent;

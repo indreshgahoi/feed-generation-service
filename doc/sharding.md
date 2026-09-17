@@ -112,9 +112,9 @@ shards. Two read patterns need to both be cheap:
 - "who does user X follow" (used to find celebrities a viewer follows)
 - "who follows user Y" (used by the fan-out worker on every single post)
 
-The first design here (kept below in git history, worth reading once)
-sharded `follows` relationally and stored the edge twice -- once on each
-endpoint's shard -- specifically so both directions stayed single-shard.
+The design tried first here sharded `follows` relationally and stored
+the edge twice -- once on each endpoint's shard -- specifically so both
+directions stayed single-shard.
 That works, but it's the wrong tool: it turns *every* follow/unfollow into
 a hand-rolled distributed transaction (two independent Postgres instances,
 no shared transaction, best-effort compensation on partial failure,

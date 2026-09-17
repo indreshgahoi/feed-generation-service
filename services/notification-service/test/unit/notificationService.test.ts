@@ -25,12 +25,12 @@ class FakeIdMinter implements IdMinter {
 
 function event(overrides: Partial<PostCreatedEvent> = {}): PostCreatedEvent {
   return {
-    postId: '100',
-    userId: '2',
+    postId: 100n,
+    userId: 2n,
     mediaUrl: 'https://example.com/a.jpg',
     mediaType: 1,
     caption: 'hello',
-    createdAt: '2024-01-01T00:00:00Z',
+    createdAt: 1704067200000,
     ...overrides,
   };
 }
@@ -51,7 +51,7 @@ describe('NotificationService.handlePostCreated', () => {
     const repo = new FakeNotificationRepository();
     const service = new NotificationService(directory, repo, new FakeIdMinter());
 
-    const notified = await service.handlePostCreated(event({ caption: 'hi @alice', userId: '2' }));
+    const notified = await service.handlePostCreated(event({ caption: 'hi @alice', userId: 2n }));
 
     expect(notified).toEqual(['5']);
     expect(repo.created).toEqual([{ recipientId: 5n, actorId: 2n, postId: 100n }]);
@@ -73,7 +73,7 @@ describe('NotificationService.handlePostCreated', () => {
     const repo = new FakeNotificationRepository();
     const service = new NotificationService(directory, repo, new FakeIdMinter());
 
-    const notified = await service.handlePostCreated(event({ caption: 'hi @author', userId: '2' }));
+    const notified = await service.handlePostCreated(event({ caption: 'hi @author', userId: 2n }));
 
     expect(notified).toEqual([]);
     expect(repo.created).toEqual([]);

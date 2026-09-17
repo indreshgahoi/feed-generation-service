@@ -2,12 +2,24 @@
 name = "ranking-service"
 version = "1.0.0"
 edition = "2021"
+build = "build.rs"
 
 [dependencies]
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
-serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-chrono = { version = "0.4", features = ["serde"] }
+chrono = "0.4"
 tracing = "0.1"
 tracing-subscriber = "0.3"
+# gRPC transport for the ranking call (feed-aggregation-service ->
+# ranking-service). The message body itself is FlatBuffers-encoded, not a
+# nested protobuf message -- see doc/wire-protocols.md.
+tonic = "0.12"
+prost = "0.13"
+flatbuffers = "25"
+
+[build-dependencies]
+# Compiles schemas/proto/ranking.proto into the RankingService server
+# trait at `cargo build` time -- idiomatic Rust codegen, unlike Go/Java's
+# committed generated code (see scripts/gen_schemas.sh).
+tonic-build = "0.12"

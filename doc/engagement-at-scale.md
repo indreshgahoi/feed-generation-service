@@ -98,8 +98,9 @@ for it (no bespoke locking).
 - **Two-level threading (`parent_comment_id`, replies).** A real schema
   and API change (a reply endpoint, "top-level vs. replies" as separate
   fetches) that would also need web UI work to be worth shipping half-
-  finished. Tracked as explicit follow-up, not silently dropped -- see
-  the repo's task list.
+  finished -- named explicitly here rather than silently dropped, see
+  [trade-offs.md](trade-offs.md) for where this fits against everything
+  else still simplified.
 - **Comment ranking** (`w1*like_count + w2*verified + w3*followed -
   decay`). Needs comment-level likes and a "verified author" concept
   neither of which exist in this repo; chronological order is what's

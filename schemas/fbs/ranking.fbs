@@ -1,0 +1,38 @@
+// Payload carried inside the gRPC RankingService.Rank call (see
+// schemas/proto/ranking.proto) between feed-aggregation-service (Go) and
+// ranking-service (Rust). Two independent root tables in this file --
+// CandidateList is the request root, RankedList is the response root --
+// each side calls the matching GetRootAs*() accessor for the buffer it
+// has. See doc/wire-protocols.md for why this call carries FlatBuffers
+// bytes inside gRPC rather than a plain protobuf message.
+namespace feed.ranking;
+
+table Candidate {
+  post_id: uint64;
+  author_id: uint64;
+  source: string;
+  like_count: int64;
+  comment_count: int64;
+  // Unix epoch milliseconds.
+  created_at: uint64;
+}
+
+table CandidateList {
+  items: [Candidate];
+}
+
+table RankedItem {
+  post_id: uint64;
+  author_id: uint64;
+  source: string;
+  score: float64;
+  p_like: float64;
+  p_comment: float64;
+  p_share: float64;
+  p_dwell: float64;
+  p_hide: float64;
+}
+
+table RankedList {
+  items: [RankedItem];
+}

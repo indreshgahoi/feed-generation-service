@@ -8,7 +8,7 @@ import 'dotenv/config';
 import { Kafka, logLevel } from 'kafkajs';
 import Redis from 'ioredis';
 
-import type { PostCreatedEvent } from './domain/types.js';
+import { decodePostCreated } from './kafka/decodePostCreated.js';
 import { NotificationService } from './service/notificationService.js';
 import { ShardedPool } from './storage/postgres/shardedPool.js';
 import { PostgresNotificationRepository } from './storage/postgres/notificationRepository.js';
@@ -42,7 +42,7 @@ async function main() {
     autoCommit: false,
     eachMessage: async ({ message, partition }) => {
       if (!message.value) return;
-      const event = JSON.parse(message.value.toString()) as PostCreatedEvent;
+      const event = decodePostCreated(message.value);
 
       try {
         const notified = await service.handlePostCreated(event);

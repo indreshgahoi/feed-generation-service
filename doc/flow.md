@@ -29,8 +29,9 @@ can jump straight to the code.
    fire-and-forget from the client's perspective.
 
 4. **Kafka publish.** [`publisher.go`](../services/post-ingestion-service/internal/storage/kafka/publisher.go)
-   marshals a `post-created` JSON event (`postId, userId, mediaUrl,
-   mediaType, caption, createdAt`) and publishes it to the `post-created`
+   encodes a `post-created` **FlatBuffers** event (`postId, userId, mediaUrl,
+   mediaType, caption, createdAt` -- see [wire-protocols.md](wire-protocols.md))
+   and publishes it to the `post-created`
    topic, **keyed by `userId`**. The handler returns `201 Created`
    immediately after -- it does not wait for any consumer to process the
    event. (If the Kafka publish itself fails, the code logs a loud warning
@@ -55,23 +56,24 @@ can jump straight to the code.
      to split followers into active (within `ACTIVE_WITHIN_DAYS`) vs.
      dormant. Any follower ID that resolves to an out-of-range shard is
      dropped and logged rather than failing the whole fan-out -- see
-     [learning-notes.md](learning-notes.md) bug #6 for why that matters.
+     [learning-notes.md](learning-notes.md) bug #5 for why that matters.
    - Active followers: `ZADD feed:user:<follower_id> <created_at_ms>
      <post_id>` into Redis ([`RedisHotInboxRepository.java`](../services/fanout-worker/src/main/java/com/feed/fanout/storage/redis/RedisHotInboxRepository.java)),
      then trimmed back to `FEED_INBOX_MAX_ITEMS` (800) if it grew past
      that.
    - Dormant followers: instead of being dropped (the pre-tiering
-     behavior), the same `(post_id, score)` entry is sent via HTTP to
-     feed-aggregation-service's `POST /internal/cold-tier/append`
-     ([`ColdTierHttpClient.java`](../services/fanout-worker/src/main/java/com/feed/fanout/storage/http/ColdTierHttpClient.java)),
+     behavior), the same `(post_id, score)` entry is sent via gRPC to
+     feed-aggregation-service's `ColdTierService.Append`
+     ([`ColdTierGrpcClient.java`](../services/fanout-worker/src/main/java/com/feed/fanout/storage/grpc/ColdTierGrpcClient.java)),
      which appends it to that follower's BadgerDB cold-tier entry. See
-     [caching.md](caching.md) for the full hot/cold design.
+     [caching.md](caching.md) for the full hot/cold design and
+     [wire-protocols.md](wire-protocols.md) for the gRPC contract.
    - **Celebrity path (not triggered here, since `user_2` isn't one):** a
      single `ZADD celebrity:outbox:2 ...` -- no per-follower work, no
      Neo4j follower-list query, no cross-shard Postgres call at all. This
      is the entire point of the hybrid design: a celebrity's follower
      count never touches fan-out latency.
-   - Kafka offsets are committed manually, only after the Redis/HTTP
+   - Kafka offsets are committed manually, only after the Redis/gRPC
      writes succeed, so a crash mid-fan-out reprocesses the event rather
      than silently dropping it (at-least-once, not exactly-once -- a
      re-run just re-`ZADD`s the same member/score, which is idempotent).
@@ -159,20 +161,25 @@ not one query per candidate, and not one giant cross-shard query, since
 Postgres can't do that across independent instances. Any ID whose
 computed shard is out of range is dropped from its batch with a logged
 warning rather than failing the whole hydration (the fix for the crash
-documented in [learning-notes.md](learning-notes.md) bug #6).
+documented in [learning-notes.md](learning-notes.md) bug #5).
 `like_count`/`comment_count` are fetched separately, from the **sharded
 Redis counters** ([`counter_repo.go`](../services/feed-aggregation-service/internal/storage/redis/counter_repo.go)),
 not from Postgres at all -- see [engagement-at-scale.md](engagement-at-scale.md).
 
-**Stage 5 -- ranking:** the hydrated candidates are POSTed to
-`ranking-service`'s `/rank` endpoint via [`rankingclient/client.go`](../services/feed-aggregation-service/internal/storage/rankingclient/client.go)
-as `{postId, authorId, source, likeCount, commentCount, createdAt}`
-tuples. Rust computes `P(Like)/P(Comment)/P(Share)/P(Dwell)/P(Hide)` from
+**Stage 5 -- ranking:** the hydrated candidates are sent to
+`ranking-service`'s `RankingService.Rank` gRPC method via
+[`rankingclient/client.go`](../services/feed-aggregation-service/internal/storage/rankingclient/client.go),
+encoded as a FlatBuffers `CandidateList` (`postId, authorId, source,
+likeCount, commentCount, createdAt` per candidate) inside the gRPC
+message -- see [wire-protocols.md](wire-protocols.md) for why this one
+call carries FlatBuffers bytes rather than a plain protobuf message.
+Rust computes `P(Like)/P(Comment)/P(Share)/P(Dwell)/P(Hide)` from
 recency decay + normalized engagement counts (see
 [`main.rs`](../services/ranking-service/src/main.rs)), combines them into
 the doc's weighted composite score, and returns everything sorted
-descending. This service is entirely shard-agnostic -- it never sees a
-user_id or post_id's shard, only pre-hydrated scoring inputs.
+descending, encoded as a FlatBuffers `RankedList`. This service is
+entirely shard-agnostic -- it never sees a user_id or post_id's shard,
+only pre-hydrated scoring inputs.
 
 **Stage 6 -- diversity + pagination window:** [`diversity.go`](../services/feed-aggregation-service/internal/service/diversity.go)
 walks the ranked list keeping at most 2 posts per author (dropping the

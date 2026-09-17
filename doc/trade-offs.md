@@ -7,14 +7,14 @@ The goal isn't "this repo is wrong" -- it's "here's the reasoning an
 interviewer wants to hear when you explain why you'd do it differently at
 scale."
 
-An earlier version of this table had "single Postgres instance" and
-"Postgres table + Redis-cached joins for the graph" as its top two rows.
-Both are gone now -- application-level sharding across 4 Postgres
-instances and a real Neo4j graph store are actually implemented, not just
-discussed (see [sharding.md](sharding.md)), and a Redis/BadgerDB hot-cold
-feed tier replaced flat Redis (see [caching.md](caching.md)). The table
-below covers what's *still* simplified relative to full production scale,
-plus a few new rows the sharded/polyglot design itself introduces.
+Application-level sharding across 4 Postgres instances and a real Neo4j
+graph store are actually implemented here, not just discussed (see
+[sharding.md](sharding.md)), and a Redis/BadgerDB hot-cold feed tier and
+gRPC/Protobuf + FlatBuffers wire formats replace what would otherwise be
+flat Redis and JSON-over-HTTP (see [caching.md](caching.md) and
+[wire-protocols.md](wire-protocols.md)). The table below covers what's
+*still* simplified relative to full production scale, plus a few new rows
+the sharded/polyglot design itself introduces.
 
 ## The full table
 
@@ -29,7 +29,7 @@ plus a few new rows the sharded/polyglot design itself introduces.
 | 7 | Ranking | Rust heuristics: recency decay x normalized engagement counts | Two-pass: LightGBM/GBDT pruning (~750 -> 150 candidates) then a multi-task deep model predicting P(Like)/P(Comment)/P(Share)/P(Dwell)/P(Hide) | Heuristics can't learn interaction effects (this user tends to comment on video but not photos; this content type dwells long but converts to likes rarely) or adapt as behavior shifts -- a trained model captures patterns no hand-written formula will find, and gets better with more data instead of staying fixed |
 | 8 | Out-of-network recall | Off-the-shelf sentence embeddings (MiniLM) of caption text | Trained two-tower model: one tower encodes user taste from behavior history, the other encodes item/content signals (not just text -- image embeddings, engagement velocity, author features); trained end-to-end on click/engagement labels | Caption-text similarity finds topically similar posts, not posts *this user* will engage with -- it has no signal from behavior at all. A two-tower model is trained specifically to predict engagement, and the item tower is precomputed once per item (cheap at serve time) while the user tower is refreshed as behavior changes |
 | 9 | Event bus | Single Kafka broker, 3 partitions, replication factor 1 | Multi-broker cluster, replication factor 3, partition count sized to consumer parallelism needed | Replication factor 1 means the broker holding a partition is a single point of failure -- lose that box, lose unconsumed messages. Replication factor 3 + multiple brokers means the cluster survives losing any one node without data loss |
-| 10 | Ranking service call | Synchronous HTTP round-trip per feed request, from feed-aggregation-service to ranking-service, for every candidate | Same shape, but usually: co-located/low-latency transport (gRPC over a service mesh, not HTTP+JSON), model inference batched and possibly cached per (user, candidate-set) for a few seconds, with a fallback path if the ranker times out | An extra network hop with JSON (de)serialization adds latency on the hot path for every single feed request; at 80k QPS that's 80k extra round-trips a second the doc's <100ms budget has to absorb. Real systems either colocate ranking with aggregation or make the RPC as cheap as physically possible, and always have a "ranker is down" fallback (e.g., recency-only ordering) rather than failing the whole request |
+| 10 | Ranking service call | Synchronous gRPC round-trip per feed request, from feed-aggregation-service to ranking-service, for every candidate -- FlatBuffers-encoded payload, not Protobuf's own codec (see [wire-protocols.md](wire-protocols.md)) | Same shape, but usually: co-located/lower-latency placement, model inference batched and possibly cached per (user, candidate-set) for a few seconds, with a fallback path if the ranker times out | The wire-format cost this row used to name (JSON parsing on every hot-path call) is gone -- what's still missing is everything about the *call pattern* itself: no batching across concurrent feed requests, no short-lived cache of recent scores, and no "ranker is down" fallback (e.g., recency-only ordering) -- a ranking-service outage currently fails the whole feed request rather than degrading gracefully |
 | 11 | Consumer error handling | Log and continue (fanout-worker, vector-pipeline); no dead-letter queue, no retry topic | Poison-message handling: retry with backoff, then route to a dead-letter topic after N failures, with alerting and a replay tool | Without this, one malformed event can either be silently dropped (data loss) or, if you naively retry forever, can wedge a consumer group's offset and stop all downstream processing behind it |
 | 12 | Observability | Structured logging (`slog` in Go, standard loggers elsewhere), no metrics, no tracing | Structured logs + metrics (fan-out latency, consumer lag, cache hit rate, shard-level p50/p99, cold-tier promotion rate) + distributed tracing across the write and read paths | You cannot operate a system at 80k QPS by tailing logs. Consumer lag alone (how far behind fanout-worker is from the head of the topic) is the single most important signal for "is fan-out keeping up," and per-shard latency is what tells you *which* Postgres instance is the current bottleneck -- neither exists here |
 | 13 | AuthN/AuthZ | None -- any caller can post as any `userId` | Authenticated sessions, abuse detection | Obviously required before this touches real user data; omitted here because it's orthogonal to the feed/sharding architecture itself, not because it's hard. (Engagement-specific rate limiting *is* implemented -- see [engagement-at-scale.md](engagement-at-scale.md) -- but general API-level auth is not) |
@@ -38,7 +38,7 @@ plus a few new rows the sharded/polyglot design itself introduces.
 | 16 | Schema migrations | One idempotent `db/shard-schema.sql`, re-run by hand against all 4 shards | Versioned migration tool (Flyway, golang-migrate, Alembic) with up/down migrations, applied automatically and identically to every shard in CI/CD | A single idempotent script works until two people modify the schema in parallel, or a migration succeeds on 3 shards and fails on the 4th, leaving the fleet's schemas inconsistent with no record of which shards are on which version |
 | 17 | Consistency model | Read-your-own-write gap: a user's own new post doesn't appear in their *own* feed read (they don't follow themselves, and it's not in a celebrity outbox unless they are one) -- only via vector recall, if at all | Real systems make an explicit product decision here (usually: show a user their own recent posts pinned/injected client-side, not through the same recall funnel) | This is a good one to notice unprompted in an interview -- it shows you're thinking about the actual user experience implications of an architecture, not just its throughput numbers |
 | 18 | Gateway vs. service mesh | Envoy as an edge ingress for client traffic only; the 2 internal service-to-service calls (fanout-worker -> feed-aggregation-service, feed-aggregation-service -> ranking-service) go direct over the Docker network, no mTLS, no unified retry/circuit-breaking policy | A full mesh (Istio/Linkerd-style sidecars) covering internal traffic too, with mTLS between every service and consistent retry/timeout/circuit-breaking policy enforced centrally rather than per-service | At 2-3 internal call sites, sidecars are pure overhead; at real service-count scale, the alternative (every service hand-rolling its own retry/timeout logic, plaintext internally) becomes the bigger risk -- see [gateway.md](gateway.md#what-s-deliberately-not-behind-the-gateway) |
-| 19 | HTTP/3 scope | QUIC terminated at the Envoy edge only, for the feed read path specifically; Envoy still speaks HTTP/1.1 to feed-aggregation-service upstream | End-to-end HTTP/3 (or a purpose-built internal transport like gRPC) all the way to the origin service, and/or QUIC on every listener, not just one | The intra-datacenter Envoy-to-service hop isn't the latency problem QUIC solves (no packet loss, no high RTT, no connection migration to worry about on a Docker bridge network) -- terminating there and reusing a boring, well-understood HTTP/1.1 hop internally is the same trade real CDNs make. Full record, including how this was actually verified (not just configured): [gateway.md](gateway.md#why-http3-and-why-only-on-the-feed-read-path) |
+| 19 | HTTP/3 scope | QUIC terminated at the Envoy edge only, for the feed read path specifically; Envoy still speaks HTTP/1.1 to feed-aggregation-service upstream (the 2 internal service-to-service calls are already gRPC over HTTP/2, just not QUIC -- see [wire-protocols.md](wire-protocols.md)) | End-to-end HTTP/3 all the way to the origin service, and/or QUIC on every listener, not just one | The intra-datacenter Envoy-to-service hop isn't the latency problem QUIC solves (no packet loss, no high RTT, no connection migration to worry about on a Docker bridge network) -- terminating there and reusing a boring, well-understood HTTP/1.1 hop internally is the same trade real CDNs make. Full record, including how this was actually verified (not just configured): [gateway.md](gateway.md#why-http3-and-why-only-on-the-feed-read-path) |
 
 ## The six worth going deeper on
 
@@ -64,19 +64,18 @@ different, graph-specific problem.
 
 ### 2. Why Neo4j instead of sharding `follows` relationally (row 2)
 
-The design this repo tried *first* and abandoned (visible in git history)
-sharded `follows` by storing each edge twice, once per endpoint's shard,
-so both "who do I follow" and "who follows me" stayed single-shard reads.
-That works, but every follow/unfollow becomes a hand-rolled distributed
-transaction across two independent Postgres instances -- no shared
-transaction, best-effort compensation on partial failure, permanent
-potential for drift between the two copies. The source doc's own "Meta
-TAO" callout is itself an admission that this is the wrong tool: TAO isn't
-a cleverly-sharded relational table, it's a purpose-built graph store,
-because relational sharding and graph traversal want opposite things from
-a key. This repo doesn't build TAO, but it makes the same underlying
-choice TAO represents -- store the graph in something designed to store
-graphs. Full record: [sharding.md](sharding.md#the-social-graph-lives-in-neo4j-not-sharded-postgres).
+The design this repo tried first and abandoned sharded `follows` by
+storing each edge twice, once per endpoint's shard -- which works, but
+turns every follow/unfollow into a hand-rolled distributed transaction
+across two independent Postgres instances, with permanent potential for
+drift between the two copies. Full record of that design and why it was
+dropped: [sharding.md](sharding.md#the-social-graph-lives-in-neo4j-not-sharded-postgres).
+The interview-ready version: the source doc's own "Meta TAO" callout is
+itself an admission that sharded-relational is the wrong tool -- TAO is a
+purpose-built graph store because relational sharding and graph traversal
+want opposite things from a key. This repo doesn't build TAO, but makes
+the same underlying choice TAO represents: store the graph in something
+designed to store graphs.
 
 ### 3. Bloom filter vs. ZSET (row 6)
 
@@ -119,7 +118,7 @@ and separately, "the fan-out worker's cross-shard read is itself a
 partial-failure surface -- if one shard's query fails, this repo drops
 just that shard's candidate followers with a logged warning rather than
 failing the whole fan-out" (see [learning-notes.md](learning-notes.md),
-bug #6, for the incident that motivated failing this way instead of
+bug #5, for the incident that motivated failing this way instead of
 crashing).
 
 ### 6. Edge gateway, not a mesh -- and why QUIC stops there too (rows 18, 19)

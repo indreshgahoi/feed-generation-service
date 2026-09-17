@@ -14,14 +14,15 @@ The [source design doc](instagram_feed_design_doc.pdf) specs a feed system for
 
 This repo implements the same shape of system, at a scale that runs on one
 laptop, with each service written in a different language matching the
-doc's own (explicit or implied) choices. Unlike an earlier version of this
-repo, sharding, the graph store, hot/cold feed storage, and a real edge
-gateway are **actually implemented**, not simplified away and left as a
+doc's own (explicit or implied) choices. Sharding, the graph store,
+hot/cold feed storage, a real edge gateway, and the internal wire
+protocols are **actually implemented**, not simplified away and left as a
 discussion point -- see [sharding.md](sharding.md),
-[caching.md](caching.md), and [gateway.md](gateway.md) for the design
-records. The "why a different language per service" framing is explained
-in the top-level [README](../README.md); this doc is about what the system
-*does*, not why it's polyglot.
+[caching.md](caching.md), [gateway.md](gateway.md), and
+[wire-protocols.md](wire-protocols.md) for the design records. The "why a
+different language per service" framing is explained in the top-level
+[README](../README.md); this doc is about what the system *does*, not why
+it's polyglot.
 
 Every application service (and Envoy) runs as a Docker Compose container
 now -- see [gateway.md](gateway.md) for the routing design and
@@ -52,10 +53,10 @@ system runs as a bare host process.
   users,     FOLLOWS,  rate limit,(ZSET)   (ZSET)  (dormant  vector)
   likes,     follower  read-your-                            followers)
   comments)  Count,    own-writes)  │                            ▲
-             isCeleb)     │         │                            │ direct HTTP call,
+             isCeleb)     │         │                            │ direct gRPC call,
                           ▼         │                            │ NOT via Envoy --
-                        Kafka       │                            │ see doc/gateway.md
-                     "post-created" │                  ┌─────────┴────────┐
+                        Kafka       │                            │ see doc/wire-protocols.md
+             "post-created" (FlatBuffers) │              ┌─────────┴────────┐
                      3 partitions,  │                   │  (fanout-worker    │
                      key=author_id  │                   │   writes here for   │
                           │         │                   │   dormant followers) │
@@ -75,17 +76,17 @@ system runs as a bare host process.
  -> Redis hot
  inbox / celebrity
  outbox / BadgerDB
- cold tier (HTTP)
+ cold tier (gRPC)
 
-                        ┌──────────────────────────┐
-                        │   ranking-service (Rust)   │
-                        │           :4003             │
-                        │  POST /rank -- stateless,    │
-                        │  called directly by          │
-                        │  feed-aggregation-service,    │
-                        │  NOT via Envoy (see            │
-                        │  doc/gateway.md)                │
-                        └──────────────────────────┘
+                        ┌──────────────────────────────┐
+                        │   ranking-service (Rust)       │
+                        │   :4003 (HTTP /healthz)          │
+                        │   :4103 (gRPC Rank) -- stateless,  │
+                        │   called directly by                │
+                        │   feed-aggregation-service,           │
+                        │   NOT via Envoy (see                    │
+                        │   doc/wire-protocols.md)                  │
+                        └──────────────────────────────┘
 ```
 
 ## Services
@@ -93,11 +94,11 @@ system runs as a bare host process.
 | Service | Language | Port | Owns | Talks to |
 |---|---|---|---|---|
 | [post-ingestion-service](../services/post-ingestion-service) | Go | 4001 | Writing posts, presigning uploads, the social graph (follow/unfollow, user list), engagement (like/unlike, comments), shard-aware ID minting | 4x Postgres shards, Neo4j, Redis (counters/rate-limit/like-state), Kafka (producer), MinIO |
-| [fanout-worker](../services/fanout-worker) | Java | -- (consumer only) | Hybrid fan-out decision + write, across shards and the graph store | Kafka (consumer), Neo4j (read follower list/isCelebrity), 4x Postgres shards (cross-shard active-follower filter), Redis (hot inbox/outbox write), feed-aggregation-service (HTTP, cold-tier append) |
+| [fanout-worker](../services/fanout-worker) | Java | -- (consumer only) | Hybrid fan-out decision + write, across shards and the graph store | Kafka (consumer), Neo4j (read follower list/isCelebrity), 4x Postgres shards (cross-shard active-follower filter), Redis (hot inbox/outbox write), feed-aggregation-service (gRPC, cold-tier append) |
 | [vector-pipeline](../services/vector-pipeline) | Python | -- (consumer only) | Caption embeddings | Kafka (consumer), Qdrant (write) |
 | [notification-service](../services/notification-service) | Node/TS | -- (consumer only) | @mention notifications, shard-aware | Kafka (consumer), Redis (username directory read), Postgres shard owning the recipient (write) |
-| [feed-aggregation-service](../services/feed-aggregation-service) | Go | 4002 | The entire read path, hot/cold feed storage | Redis, BadgerDB (embedded), 4x Postgres shards (cross-shard hydration), Neo4j (celebrity lookups), Qdrant, ranking-service (HTTP) |
-| [ranking-service](../services/ranking-service) | Rust | 4003 | Stateless scoring | Nothing -- pure function over its input, no DB/cache of its own |
+| [feed-aggregation-service](../services/feed-aggregation-service) | Go | 4002 (HTTP), 4102 (gRPC) | The entire read path, hot/cold feed storage | Redis, BadgerDB (embedded), 4x Postgres shards (cross-shard hydration), Neo4j (celebrity lookups), Qdrant, ranking-service (gRPC) |
+| [ranking-service](../services/ranking-service) | Rust | 4003 (HTTP `/healthz`), 4103 (gRPC) | Stateless scoring | Nothing -- pure function over its input, no DB/cache of its own |
 | [web-ui](../web-ui) | static HTML/JS (nginx) | 80 | Sample client | Nothing directly -- all API calls route through Envoy |
 | [envoy](../envoy) | Envoy (config only, no app code) | 8080 (HTTP), 8443 (HTTP/3), 9901 (admin) | Single ingress for all client traffic; see [gateway.md](gateway.md) | post-ingestion-service, feed-aggregation-service, web-ui |
 
@@ -221,7 +222,10 @@ CockroachDB/Pebble precedent for that exact substitution): [caching.md](caching.
 
 - Topic `post-created`, 3 partitions, key = `author_id` (so all of one
   author's posts stay in order on one partition -- matters if you ever add
-  ordering-sensitive logic like "delete cancels a pending fan-out").
+  ordering-sensitive logic like "delete cancels a pending fan-out"). The
+  message value is a FlatBuffers-encoded `PostCreatedEvent`, not JSON --
+  see [wire-protocols.md](wire-protocols.md) for why: it's produced once
+  here and independently deserialized by all three consumers below.
 - Three independent consumer groups read the same topic: `fanout-worker`,
   `vector-pipeline`, `notification-service`. Each gets its own copy of every
   message and its own offset -- that's the whole point of Kafka over a

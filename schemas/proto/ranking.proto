@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+// RankingService: feed-aggregation-service (Go) -> ranking-service (Rust).
+// Composite scoring for a batch of feed candidates. Internal only --
+// bypasses the Envoy gateway (see doc/gateway.md).
+//
+// Deliberately layered wire format: gRPC provides the typed RPC contract,
+// connection multiplexing (HTTP/2), and streaming readiness, but the
+// message body is a raw FlatBuffers buffer (schemas/fbs/ranking.fbs), not
+// a nested protobuf message. This is a specific, narrow choice for this
+// one high-volume, list-heavy call: Protobuf's own wire format still
+// requires a full parse+allocate pass to materialize a message, where
+// FlatBuffers gives zero-copy random access straight into the received
+// bytes. gRPC's typed contract is worth keeping (service discovery,
+// codegen'd stubs, HTTP/2 transport); its payload codec specifically is
+// not, for this call. Full reasoning: doc/wire-protocols.md.
+package feed.ranking.v1;
+
+option go_package = "feed-aggregation-service/internal/genproto/ranking;rankingpb";
+
+service RankingService {
+  rpc Rank(RankRequest) returns (RankResponse);
+}
+
+message RankRequest {
+  // FlatBuffers-encoded feed.ranking.CandidateList (schemas/fbs/ranking.fbs).
+  bytes candidates_fb = 1;
+}
+
+message RankResponse {
+  // FlatBuffers-encoded feed.ranking.RankedList (schemas/fbs/ranking.fbs).
+  bytes ranked_fb = 1;
+}

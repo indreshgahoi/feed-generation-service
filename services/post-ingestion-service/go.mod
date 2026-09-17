@@ -3,6 +3,7 @@ module post-ingestion-service
 go 1.26.0
 
 require (
+	github.com/google/flatbuffers v25.2.10+incompatible
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/minio/minio-go/v7 v7.3.0
 	github.com/neo4j/neo4j-go-driver/v5 v5.28.4

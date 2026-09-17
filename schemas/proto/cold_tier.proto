@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+// ColdTierService: fanout-worker (Java) -> feed-aggregation-service (Go).
+// Appends a dormant follower's fan-out entry into the BadgerDB cold tier.
+// Internal, service-to-service only -- bypasses the Envoy gateway entirely
+// (see doc/gateway.md). Fire-and-forget on the caller's side: a failed
+// append is logged and dropped, never retried (an accepted loss for
+// dormant users, per doc/caching.md).
+package feed.coldtier.v1;
+
+option go_package = "feed-aggregation-service/internal/genproto/coldtier;coldtierpb";
+option java_package = "com.feed.genproto.coldtier";
+option java_multiple_files = true;
+option java_outer_classname = "ColdTierProto";
+
+service ColdTierService {
+  rpc Append(AppendRequest) returns (AppendResponse);
+}
+
+message AppendRequest {
+  uint64 user_id = 1;
+  uint64 post_id = 2;
+  uint64 author_id = 3;
+}
+
+message AppendResponse {
+  bool appended = 1;
+}

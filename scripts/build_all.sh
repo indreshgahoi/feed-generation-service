@@ -30,4 +30,7 @@ pip3 install --user --quiet -r "$ROOT/scripts/requirements.txt"
 echo "==> verifying Go/Java shard-routing parity"
 bash "$ROOT/scripts/verify_shard_parity.sh" 2000
 
+echo "==> verifying generated protobuf/FlatBuffers code matches schemas/"
+bash "$ROOT/scripts/verify_schema_gen.sh"
+
 echo "All services built."

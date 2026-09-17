@@ -10,57 +10,55 @@
 //! estimation followed by the weighted composite score -- using transparent
 //! heuristics (recency decay + normalized engagement counts) in place of the
 //! learned LightGBM/DNN passes. Swapping in real models later only touches
-//! `estimate_probabilities`; the HTTP contract and scoring formula stay the
-//! same.
+//! `estimate_probabilities`; the scoring formula stays the same.
+//!
+//! Wire format: the `Rank` call is gRPC (see schemas/proto/ranking.proto),
+//! but the request/response bodies are raw FlatBuffers buffers (see
+//! schemas/fbs/ranking.fbs), not nested protobuf messages -- deliberately,
+//! for this one high-volume, list-heavy call, to avoid Protobuf's own
+//! parse+allocate step. See doc/wire-protocols.md. `/healthz` stays a
+//! plain HTTP endpoint on the original port, since that's what
+//! docker-compose's container healthcheck probes with `wget --spider`.
 
-use axum::{routing::get, routing::post, Json, Router};
+use axum::{routing::get, Json, Router};
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 
-#[derive(Debug, Clone, Deserialize)]
+#[path = "genfbs/ranking_generated.rs"]
+#[allow(dead_code, unused_imports)]
+mod ranking_generated;
+use ranking_generated::feed::ranking::{
+    CandidateList, RankedItem as FbRankedItem, RankedItemArgs as FbRankedItemArgs, RankedList,
+    RankedListArgs,
+};
+
+mod rankingpb {
+    tonic::include_proto!("feed.ranking.v1");
+}
+use rankingpb::ranking_service_server::{RankingService, RankingServiceServer};
+use rankingpb::{RankRequest, RankResponse};
+
+#[derive(Debug, Clone)]
 struct Candidate {
-    #[serde(rename = "postId")]
     post_id: String,
-    #[serde(rename = "authorId")]
     author_id: String,
     source: String,
-    #[serde(rename = "likeCount", default)]
     like_count: i64,
-    #[serde(rename = "commentCount", default)]
     comment_count: i64,
-    #[serde(rename = "createdAt")]
     created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 struct RankedItem {
-    #[serde(rename = "postId")]
     post_id: String,
-    #[serde(rename = "authorId")]
     author_id: String,
     source: String,
     score: f64,
-    #[serde(rename = "pLike")]
     p_like: f64,
-    #[serde(rename = "pComment")]
     p_comment: f64,
-    #[serde(rename = "pShare")]
     p_share: f64,
-    #[serde(rename = "pDwell")]
     p_dwell: f64,
-    #[serde(rename = "pHide")]
     p_hide: f64,
-}
-
-#[derive(Debug, Deserialize)]
-struct RankRequest {
-    candidates: Vec<Candidate>,
-}
-
-#[derive(Debug, Serialize)]
-struct RankResponse {
-    ranked: Vec<RankedItem>,
 }
 
 /// Business weights from the doc's composite scoring objective. These would
@@ -134,32 +132,184 @@ fn score_candidate(weights: &Weights, c: &Candidate) -> RankedItem {
     }
 }
 
+/// Decodes a `feed.ranking.CandidateList` FlatBuffer (schemas/fbs/ranking.fbs)
+/// into the local `Candidate` structs the existing scoring logic already
+/// works with.
+fn decode_candidates(buf: &[u8]) -> Result<Vec<Candidate>, String> {
+    let list = flatbuffers::root::<CandidateList>(buf).map_err(|e| format!("invalid candidates FlatBuffer: {e}"))?;
+    let Some(items) = list.items() else {
+        return Ok(Vec::new());
+    };
+    let mut candidates = Vec::with_capacity(items.len());
+    for i in 0..items.len() {
+        let fb_c = items.get(i);
+        let created_at = DateTime::<Utc>::from_timestamp_millis(fb_c.created_at() as i64).unwrap_or_else(Utc::now);
+        candidates.push(Candidate {
+            post_id: fb_c.post_id().to_string(),
+            author_id: fb_c.author_id().to_string(),
+            source: fb_c.source().unwrap_or("").to_string(),
+            like_count: fb_c.like_count(),
+            comment_count: fb_c.comment_count(),
+            created_at,
+        });
+    }
+    Ok(candidates)
+}
+
+/// Encodes scored items into a `feed.ranking.RankedList` FlatBuffer.
+fn encode_ranked(ranked: &[RankedItem]) -> Vec<u8> {
+    let mut fbb = flatbuffers::FlatBufferBuilder::new();
+
+    let item_offsets: Vec<_> = ranked
+        .iter()
+        .map(|r| {
+            let source = fbb.create_string(&r.source);
+            FbRankedItem::create(
+                &mut fbb,
+                &FbRankedItemArgs {
+                    post_id: r.post_id.parse().unwrap_or(0),
+                    author_id: r.author_id.parse().unwrap_or(0),
+                    source: Some(source),
+                    score: r.score,
+                    p_like: r.p_like,
+                    p_comment: r.p_comment,
+                    p_share: r.p_share,
+                    p_dwell: r.p_dwell,
+                    p_hide: r.p_hide,
+                },
+            )
+        })
+        .collect();
+
+    let items_vec = fbb.create_vector(&item_offsets);
+    let list = RankedList::create(&mut fbb, &RankedListArgs { items: Some(items_vec) });
+    fbb.finish(list, None);
+    fbb.finished_data().to_vec()
+}
+
+#[derive(Default)]
+struct RankingGrpcService;
+
+#[tonic::async_trait]
+impl RankingService for RankingGrpcService {
+    async fn rank(
+        &self,
+        request: tonic::Request<RankRequest>,
+    ) -> Result<tonic::Response<RankResponse>, tonic::Status> {
+        let candidates = decode_candidates(&request.into_inner().candidates_fb)
+            .map_err(tonic::Status::invalid_argument)?;
+
+        let weights = Weights::from_env();
+        let mut ranked: Vec<RankedItem> = candidates.iter().map(|c| score_candidate(&weights, c)).collect();
+        ranked.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
+        Ok(tonic::Response::new(RankResponse { ranked_fb: encode_ranked(&ranked) }))
+    }
+}
+
 async fn healthz() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "status": "ok" }))
 }
 
-async fn rank(Json(req): Json<RankRequest>) -> Json<RankResponse> {
-    let weights = Weights::from_env();
-    let mut ranked: Vec<RankedItem> = req.candidates.iter().map(|c| score_candidate(&weights, c)).collect();
-    ranked.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-    Json(RankResponse { ranked })
-}
-
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
-    let port: u16 = std::env::var("RANKING_PORT")
+    let http_port: u16 = std::env::var("RANKING_PORT")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(4003);
+    let grpc_port: u16 = std::env::var("RANKING_GRPC_PORT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(4103);
 
-    let app = Router::new()
-        .route("/healthz", get(healthz))
-        .route("/rank", post(rank));
+    // /healthz only -- /rank moved to gRPC below. docker-compose's
+    // container healthcheck (`wget --spider`) needs a plain HTTP endpoint,
+    // so this small server stays on the original port instead of being
+    // replaced outright.
+    let http_app = Router::new().route("/healthz", get(healthz));
+    let http_addr = SocketAddr::from(([0, 0, 0, 0], http_port));
+    let http_listener = tokio::net::TcpListener::bind(http_addr).await?;
+    tracing::info!("ranking-service HTTP (/healthz) listening on {}", http_addr);
+    let http_server = axum::serve(http_listener, http_app);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    tracing::info!("ranking-service listening on {}", addr);
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let grpc_addr = SocketAddr::from(([0, 0, 0, 0], grpc_port));
+    tracing::info!("ranking-service gRPC (Rank) listening on {}", grpc_addr);
+    let grpc_server = tonic::transport::Server::builder()
+        .add_service(RankingServiceServer::new(RankingGrpcService))
+        .serve(grpc_addr);
+
+    tokio::try_join!(
+        async { http_server.await.map_err(|e| Box::<dyn std::error::Error>::from(e)) },
+        async { grpc_server.await.map_err(|e| Box::<dyn std::error::Error>::from(e)) },
+    )?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ranking_generated::feed::ranking::{Candidate as FbCandidate, CandidateArgs as FbCandidateArgs, CandidateListArgs};
+
+    fn build_candidates_fb(candidates: &[(u64, u64, &str, i64, i64, u64)]) -> Vec<u8> {
+        let mut fbb = flatbuffers::FlatBufferBuilder::new();
+        let offsets: Vec<_> = candidates
+            .iter()
+            .map(|&(post_id, author_id, source, like_count, comment_count, created_at)| {
+                let source = fbb.create_string(source);
+                FbCandidate::create(
+                    &mut fbb,
+                    &FbCandidateArgs { post_id, author_id, source: Some(source), like_count, comment_count, created_at },
+                )
+            })
+            .collect();
+        let items = fbb.create_vector(&offsets);
+        let list = CandidateList::create(&mut fbb, &CandidateListArgs { items: Some(items) });
+        fbb.finish(list, None);
+        fbb.finished_data().to_vec()
+    }
+
+    // Round-trip proof, mirroring this repo's "verify it, don't assert
+    // it" standard (see scripts/verify_shard_parity.sh): calls the gRPC
+    // service struct directly (no network needed -- it's just a struct
+    // implementing the generated trait) with a hand-built FlatBuffers
+    // request, and decodes the FlatBuffers response.
+    #[tokio::test]
+    async fn rank_decodes_request_and_encodes_response_as_flatbuffers() {
+        let now_millis = Utc::now().timestamp_millis() as u64;
+        let candidates_fb = build_candidates_fb(&[
+            (111, 222, "in-network", 40, 5, now_millis),
+            (333, 444, "vector", 0, 0, now_millis),
+        ]);
+
+        let svc = RankingGrpcService;
+        let resp = svc
+            .rank(tonic::Request::new(RankRequest { candidates_fb }))
+            .await
+            .expect("rank should succeed")
+            .into_inner();
+
+        let ranked = flatbuffers::root::<RankedList>(&resp.ranked_fb).expect("valid RankedList FlatBuffer");
+        let items = ranked.items().expect("non-empty items");
+        assert_eq!(items.len(), 2);
+
+        // The candidate with real engagement should outrank the cold one.
+        let top = items.get(0);
+        assert_eq!(top.post_id(), 111);
+        assert_eq!(top.author_id(), 222);
+        assert_eq!(top.source(), Some("in-network"));
+        assert!(top.score() > items.get(1).score());
+    }
+
+    #[tokio::test]
+    async fn rank_rejects_a_malformed_flatbuffer() {
+        let svc = RankingGrpcService;
+        let err = svc
+            .rank(tonic::Request::new(RankRequest { candidates_fb: vec![1, 2, 3] }))
+            .await
+            .expect_err("garbage bytes should not decode as a CandidateList");
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    }
 }

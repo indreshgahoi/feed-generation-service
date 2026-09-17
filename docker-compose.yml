@@ -19,8 +19,10 @@ x-app-env: &app-env
   NEO4J_PASSWORD: feedpassword
   KAFKA_BROKERS: kafka:29092
   QDRANT_URL: http://qdrant:6333
-  RANKING_SERVICE_URL: http://ranking-service:4003
-  FEED_AGGREGATION_SERVICE_URL: http://feed-aggregation-service:4002
+  # The 2 internal, service-to-service calls that bypass Envoy (see
+  # doc/gateway.md) are gRPC, not HTTP -- see doc/wire-protocols.md.
+  RANKING_SERVICE_GRPC_ADDR: ranking-service:4103
+  FEED_AGGREGATION_SERVICE_GRPC_ADDR: feed-aggregation-service:4102
 
 services:
   # --- Sharded relational tier (application-level sharding by user_id) ---
@@ -233,6 +235,7 @@ services:
     environment:
       <<: *app-env
       FEED_PORT: "4002"
+      FEED_AGGREGATION_GRPC_PORT: "4102"
       COLD_TIER_DATA_DIR: /app/data/cold-tier
     volumes:
       - feedcolddata:/app/data/cold-tier
@@ -247,10 +250,13 @@ services:
       qdrant: { condition: service_healthy }
 
   ranking-service:
-    build: services/ranking-service
+    build:
+      context: .
+      dockerfile: services/ranking-service/Dockerfile
     container_name: ig-ranking-service
     environment:
       RANKING_PORT: "4003"
+      RANKING_GRPC_PORT: "4103"
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:4003/healthz"]
       interval: 5s
@@ -258,7 +264,9 @@ services:
       retries: 10
 
   fanout-worker:
-    build: services/fanout-worker
+    build:
+      context: .
+      dockerfile: services/fanout-worker/Dockerfile
     container_name: ig-fanout-worker
     environment:
       <<: *app-env

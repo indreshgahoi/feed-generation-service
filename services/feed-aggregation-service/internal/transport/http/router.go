@@ -3,8 +3,7 @@ package http
 import "net/http"
 
 type Handlers struct {
-	Feed     *FeedHandler
-	ColdTier *ColdTierHandler
+	Feed *FeedHandler
 }
 
 func NewRouter(h Handlers) http.Handler {
@@ -17,9 +16,9 @@ func NewRouter(h Handlers) http.Handler {
 	mux.HandleFunc("GET /v1/feed", h.Feed.GetFeed)
 	mux.HandleFunc("POST /v1/feed/reset-seen", h.Feed.ResetSeen)
 
-	// Internal, service-to-service only (called by fanout-worker) -- not
-	// part of the public API surface this service exposes to the web UI.
-	mux.HandleFunc("POST /internal/cold-tier/append", h.ColdTier.Append)
+	// The cold-tier append call (fanout-worker -> this service) moved to
+	// gRPC -- see internal/transport/grpc and doc/wire-protocols.md. This
+	// HTTP mux now only serves the public, client-facing API.
 
 	return withCORS(mux)
 }

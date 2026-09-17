@@ -28,7 +28,8 @@ where the data actually lives, not just whether it gets written to.
   feed-aggregation-service. When fanout-worker encounters a follower who
   is *not* active, it no longer simply drops that fan-out write (the
   original design's behavior) -- it writes the same `(post_id, score)`
-  entry to the cold tier instead, via `POST /internal/cold-tier/append`
+  entry to the cold tier instead, via a gRPC call
+  (`ColdTierService.Append`, see [wire-protocols.md](wire-protocols.md))
   on feed-aggregation-service. The entry isn't lost, it's just stored
   somewhere an order of magnitude cheaper per GB, at the cost of being
   slower to read and not being pre-merged into a ready-to-rank inbox.

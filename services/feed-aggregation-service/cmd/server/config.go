@@ -7,13 +7,14 @@ import (
 
 type Config struct {
 	Port                    string
+	GRPCPort                string
 	ShardConfigPath         string
 	RedisAddr               string
 	Neo4jURI                string
 	Neo4jUsername           string
 	Neo4jPassword           string
 	QdrantURL               string
-	RankingServiceURL       string
+	RankingServiceGRPCAddr  string
 	ColdTierDataDir         string
 	InNetworkCandidateLimit int
 	CelebrityCandidateLimit int
@@ -28,13 +29,14 @@ type Config struct {
 func loadConfig() Config {
 	return Config{
 		Port:                    getEnv("FEED_PORT", "4002"),
+		GRPCPort:                getEnv("FEED_AGGREGATION_GRPC_PORT", "4102"),
 		ShardConfigPath:         getEnv("SHARD_CONFIG_PATH", "../../config/shards.json"),
 		RedisAddr:               getEnv("REDIS_ADDR", "localhost:6379"),
 		Neo4jURI:                getEnv("NEO4J_URI", "bolt://localhost:7687"),
 		Neo4jUsername:           getEnv("NEO4J_USERNAME", "neo4j"),
 		Neo4jPassword:           getEnv("NEO4J_PASSWORD", "feedpassword"),
 		QdrantURL:               getEnv("QDRANT_URL", "http://localhost:6333"),
-		RankingServiceURL:       getEnv("RANKING_SERVICE_URL", "http://localhost:4003"),
+		RankingServiceGRPCAddr:  getEnv("RANKING_SERVICE_GRPC_ADDR", "localhost:4103"),
 		ColdTierDataDir:         getEnv("COLD_TIER_DATA_DIR", "./data/cold-tier"),
 		InNetworkCandidateLimit: getEnvInt("IN_NETWORK_CANDIDATE_LIMIT", 500),
 		CelebrityCandidateLimit: getEnvInt("CELEBRITY_CANDIDATE_LIMIT", 50),

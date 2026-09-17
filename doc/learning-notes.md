@@ -91,13 +91,15 @@ just a one-off fix.
 - Async/await over a single-threaded event loop is the most natural fit of
   any of the five languages here for a service that's *purely*
   I/O-bound (Kafka in, two Postgres queries out, nothing CPU-heavy at all).
-- No schema registry, no codegen -- a hand-written `PostCreatedEvent`
-  TypeScript interface next to the Go producer's matching struct was
-  enough, because both sides just agree on JSON field names by
-  convention. A real multi-team system would likely use a shared schema
-  (Avro/Protobuf via a schema registry) specifically to make this
-  agreement enforced rather than a convention four different codebases
-  have to independently honor correctly.
+- This service's `PostCreatedEvent` interface used to be a hand-written
+  TypeScript type next to the Go producer's matching struct, agreeing on
+  JSON field names purely by convention -- exactly the gap a shared
+  schema closes. It's since been replaced by FlatBuffers codegen (see
+  [wire-protocols.md](wire-protocols.md)); the flatbuffers-js runtime's
+  choice to decode 64-bit fields as native `bigint` turned out to be a
+  bonus for this specific service, since it already mints its own
+  `bigint` Snowflake IDs -- one less string-to-bigint conversion, not one
+  more.
 
 ## Real bugs hit building this repo
 
@@ -153,40 +155,20 @@ build system with transitive dependency resolution. When a library's
 observed behavior doesn't match its documentation, check the *resolved*
 dependency tree before assuming the library itself is broken.
 
-### 4. Browser-reported `net::ERR_BLOCKED_BY_ORB` for a request that never left the browser
-
-**Symptom:** the web UI's "create post" button failed in a real Chrome
-browser with `net::ERR_BLOCKED_BY_ORB`, and the target server's own logs
-showed no record of the request ever arriving.
-**Root cause:** the page (served from port 5173) called two other backend
-ports (4001, 4002) directly. In a sandboxed/remote dev environment, only
-the port actually navigated to gets forwarded to the real browser -- the
-other ports aren't reachable from outside the sandbox at all, which
-Chrome surfaced as an opaque-response block rather than a clear
-connection error.
-**Fix:** [`web-ui/serve.py`](../web-ui/serve.py) reverse-proxies
-`/api/ingest/*` and `/api/feed/*` to the two backend ports itself, so the
-browser only ever talks to one origin/port.
-**General lesson:** any browser-based demo that needs to reach multiple
-backend ports should treat "will every one of these ports actually be
-reachable from wherever this eventually runs" as a first-class design
-question up front -- same-origin-via-proxy is more portable than pointing
-the client straight at each service, and costs almost nothing to set up.
-
-### 5. Postgres port collision with an unrelated project
+### 4. Postgres port collision with an unrelated project
 
 **Symptom:** `docker-compose up -d` needed a port remap before it would
 even start cleanly.
 **Root cause:** the dev machine already had an unrelated project's
 Postgres container bound to host port 5432.
-**Fix:** this repo's Postgres maps to host port **5434** instead (see
-`docker-compose.yml` and `.env`).
+**Fix:** this repo's 4 Postgres shards map to host ports **5441-5444**
+instead (see `docker-compose.yml` and `.env`).
 **General lesson:** never assume a service's default port is free on a
 shared or long-lived dev machine -- check with `ss -ltn` / `docker ps`
 before binding, especially for infra with well-known default ports
 (5432, 6379, 9092, ...) that many unrelated projects all reach for.
 
-### 6. A malformed shard-routed ID crashed the whole process, not just one request
+### 5. A malformed shard-routed ID crashed the whole process, not just one request
 
 **Symptom:** appending a test candidate with a made-up post ID (not a
 real self-routing ID minted by the system) to a user's cold-tier inbox,
@@ -214,3 +196,61 @@ means one bad ID either kills the whole request (if the error propagates)
 or kills the whole process (if it doesn't, as `nil` pointer derefs don't).
 The second case is far worse than the first, and both are worse than
 catching it before the fan-out even starts.
+
+### 6. FlatBuffers Java wouldn't link, one `flatc` release too new
+
+**Symptom:** `fanout-worker` failed to compile with `cannot find symbol:
+method FLATBUFFERS_25_12_19()` inside FlatBuffers' own generated
+`PostCreatedEvent.java`, immediately after wiring up
+[schemas/fbs/post_created.fbs](../schemas/fbs/post_created.fbs) (see
+[wire-protocols.md](wire-protocols.md)).
+**Root cause:** FlatBuffers' generated Java code calls a
+version-checking method (`Constants.FLATBUFFERS_<exact-version>()`) that
+only exists if the `flatbuffers-java` runtime jar is the *exact* version
+`flatc` generated against -- `flatc` was pinned to the newest release at
+the time (`25.12.19`), but Maven Central's `flatbuffers-java` artifact
+only went up to `25.2.10`. Go, Rust, and Python's generated code carry no
+such check, so the same schema built cleanly for every other language and
+only failed here.
+**Fix:** pinned `flatc` itself to `25.2.10` -- the newest version with a
+published Maven Central jar -- and regenerated every language's bindings
+against it, rather than trying to work around the mismatch in one
+language.
+**General lesson:** when one schema feeds codegen for N languages,
+"newest compiler" isn't automatically the right choice -- the constraint
+is the *oldest* published runtime library across every target language,
+and that's worth checking before picking a version, not after a build
+failure points at it.
+
+### 7. gRPC DNS resolution silently broke inside the shaded fat jar, not the code
+
+**Symptom:** `fanout-worker` crashed on startup with `IllegalArgumentException:
+Address types of NameResolver 'unix' for 'feed-aggregation-service:4102'
+not supported by transport` -- but only when run from the built
+`fanout-worker-jar-with-dependencies.jar` (in Docker); the exact same
+`ColdTierGrpcClient` code, hitting the exact same gRPC APIs, passed every
+local `mvn test` run against `localhost:<port>` with no error at all.
+**Root cause:** `grpc-netty-shaded`, `grpc-core`, and `grpc-protobuf`
+each ship their own `META-INF/services/io.grpc.NameResolverProvider`
+file (standard Java `ServiceLoader` registration). `maven-assembly-plugin`'s
+`jar-with-dependencies` descriptor copies dependency JAR contents into
+one fat jar but does **not** merge same-path resource files across
+JARs -- whichever dependency's copy of that exact path landed last in
+the merge silently overwrote the others, leaving only a Unix-domain-socket
+resolver registered and none of the normal DNS resolver. Unit tests never
+caught this because `mvn test` runs against the normal multi-JAR
+classpath (every `META-INF/services` file present, unmerged, un-collided);
+only the actual shaded artifact -- the one thing Docker actually runs --
+was affected.
+**Fix:** replaced `maven-assembly-plugin` with `maven-shade-plugin`'s
+`ServicesResourceTransformer`, which merges same-path service files
+line-by-line instead of overwriting. Confirmed by inspecting the built
+jar directly (`unzip -p ... META-INF/services/io.grpc.NameResolverProvider`)
+rather than trusting that a green test suite meant the packaged artifact
+was correct.
+**General lesson:** a passing test suite proves the *code* works against
+whatever classpath the test runner assembles -- it says nothing about
+whether the *packaging step* reproduces that same classpath faithfully.
+Uber-jar builds are exactly where those two things diverge, and
+`ServiceLoader`-based libraries (gRPC, JDBC drivers, many others) are
+exactly the mechanism most likely to break silently when they do.

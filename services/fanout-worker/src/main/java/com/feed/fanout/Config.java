@@ -8,7 +8,7 @@ public final class Config {
     public final String neo4jUri;
     public final String neo4jUsername;
     public final String neo4jPassword;
-    public final String feedAggregationServiceUrl;
+    public final String feedAggregationServiceGrpcAddr;
     public final int feedInboxMaxItems;
     public final int activeWithinDays;
 
@@ -20,7 +20,7 @@ public final class Config {
         this.neo4jUri = env("NEO4J_URI", "bolt://localhost:7687");
         this.neo4jUsername = env("NEO4J_USERNAME", "neo4j");
         this.neo4jPassword = env("NEO4J_PASSWORD", "feedpassword");
-        this.feedAggregationServiceUrl = env("FEED_AGGREGATION_SERVICE_URL", "http://localhost:4002");
+        this.feedAggregationServiceGrpcAddr = env("FEED_AGGREGATION_SERVICE_GRPC_ADDR", "localhost:4102");
         this.feedInboxMaxItems = Integer.parseInt(env("FEED_INBOX_MAX_ITEMS", "800"));
         this.activeWithinDays = Integer.parseInt(env("ACTIVE_WITHIN_DAYS", "7"));
     }

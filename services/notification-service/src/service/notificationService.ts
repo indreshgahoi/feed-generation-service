@@ -32,10 +32,10 @@ export class NotificationService {
       const recipientId = await this.usernames.lookup(username);
       if (recipientId === null) continue;
 
-      const actorId = BigInt(event.userId);
+      const actorId = event.userId;
       if (recipientId === actorId) continue; // no self-notifications
 
-      await this.notifications.create(recipientId, actorId, BigInt(event.postId));
+      await this.notifications.create(recipientId, actorId, event.postId);
       notified.push(recipientId.toString());
     }
     return notified;

@@ -8,7 +8,6 @@ import com.feed.fanout.domain.SocialGraphRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -45,9 +44,9 @@ public class FanoutService {
     }
 
     public void handle(PostCreatedEvent event) {
-        long authorId = Long.parseLong(event.userId);
-        long postId = Long.parseLong(event.postId);
-        long score = OffsetDateTime.parse(event.createdAt).toInstant().toEpochMilli();
+        long authorId = event.userId;
+        long postId = event.postId;
+        long score = event.createdAt; // already unix epoch millis on the wire
 
         // Celebrity status now lives on the Neo4j User node (see
         // doc/sharding.md) -- one graph query, no Postgres shard lookup

@@ -31,12 +31,12 @@ class FanoutServiceTest {
 
     private PostCreatedEvent event(long postId, long authorId) {
         PostCreatedEvent e = new PostCreatedEvent();
-        e.postId = String.valueOf(postId);
-        e.userId = String.valueOf(authorId);
+        e.postId = postId;
+        e.userId = authorId;
         e.mediaUrl = "https://example.com/a.jpg";
         e.mediaType = 1;
         e.caption = "hello";
-        e.createdAt = "2024-01-01T00:00:00Z";
+        e.createdAt = 1704067200000L; // 2024-01-01T00:00:00Z in epoch millis
         return e;
     }
 
