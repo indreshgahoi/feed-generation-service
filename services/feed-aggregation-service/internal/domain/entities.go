@@ -3,7 +3,7 @@
 // concrete store (sharded Postgres, Neo4j, Redis, BadgerDB, Qdrant,
 // ranking-service) implements one in internal/storage. See
 // post-ingestion-service's domain package for the same pattern, and
-// doc/architecture.md for why both Go services share it.
+// doc/DESIGN.md for why both Go services share it.
 package domain
 
 import "time"

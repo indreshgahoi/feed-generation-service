@@ -3,7 +3,7 @@
 the real HTTP APIs (POST /v1/users, /v1/follow, /v1/posts), not direct
 database writes. This matters now in a way it didn't for the original
 single-Postgres version: user IDs are self-routing Snowflake IDs minted
-by post-ingestion-service's consistent-hash ring (see doc/sharding.md),
+by post-ingestion-service's consistent-hash ring (see doc/DESIGN.md),
 not small sequential integers a script could just assign -- there is no
 shortcut that bypasses the API and still produces valid IDs.
 

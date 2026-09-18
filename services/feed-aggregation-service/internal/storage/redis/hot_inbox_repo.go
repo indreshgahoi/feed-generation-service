@@ -1,6 +1,6 @@
 // Package redis implements the Redis-backed domain repositories: the hot
 // inbox tier, seen-state dedupe, and engagement counters. See
-// doc/caching.md and doc/sharding.md.
+// doc/DESIGN.md and doc/DESIGN.md.
 package redis
 
 import (
@@ -41,7 +41,7 @@ func (r *HotInboxRepo) GetCelebrityOutbox(ctx context.Context, celebrityID strin
 // Exists reports whether userID has a hot-tier inbox key at all. This is
 // the signal that distinguishes "active user with an empty-right-now
 // inbox" from "dormant user whose data (if any) is in the cold tier" --
-// see doc/caching.md.
+// see doc/DESIGN.md.
 func (r *HotInboxRepo) Exists(ctx context.Context, userID string) (bool, error) {
 	n, err := r.client.Exists(ctx, inboxKey(userID)).Result()
 	return n > 0, err
@@ -49,7 +49,7 @@ func (r *HotInboxRepo) Exists(ctx context.Context, userID string) (bool, error) 
 
 // Promote copies cold-tier candidates into a fresh hot-tier inbox. Called
 // when a dormant user reads their feed -- a read means they're active
-// again now. See doc/caching.md.
+// again now. See doc/DESIGN.md.
 func (r *HotInboxRepo) Promote(ctx context.Context, userID string, candidates []domain.Candidate) error {
 	if len(candidates) == 0 {
 		return nil

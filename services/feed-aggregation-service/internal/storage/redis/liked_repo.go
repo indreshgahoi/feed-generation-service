@@ -10,7 +10,7 @@ import (
 // LikedRepo answers "did this viewer like these posts" from the same
 // Redis Set post-ingestion-service writes on every like/unlike --
 // user_likes:<userID> -- rather than querying sharded Postgres. See
-// doc/engagement-at-scale.md: this is the read-your-own-writes cache,
+// doc/DESIGN.md: this is the read-your-own-writes cache,
 // and it's meant to be the fast path for exactly this kind of batch
 // check during feed hydration, not a fallback.
 type LikedRepo struct {

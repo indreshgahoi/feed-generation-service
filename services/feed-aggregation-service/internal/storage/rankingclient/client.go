@@ -4,7 +4,7 @@
 // request/response bodies are raw FlatBuffers buffers (schemas/fbs/ranking.fbs),
 // not nested protobuf messages -- chosen specifically for this
 // high-volume, list-heavy call to avoid Protobuf's own parse+allocate
-// step. See doc/wire-protocols.md.
+// step. See doc/DESIGN.md.
 package rankingclient
 
 import (

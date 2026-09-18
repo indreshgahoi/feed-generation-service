@@ -1,7 +1,7 @@
 // Package moderation implements domain.ContentModerator as a synchronous
 // keyword blocklist -- the "top keywords checked synchronously" half of
 // the two-tier moderation funnel described in
-// doc/engagement-at-scale.md. The async ML/NLP half of that funnel
+// doc/DESIGN.md. The async ML/NLP half of that funnel
 // (toxicity classifiers, image models, sub-2s hide SLA) is NOT
 // implemented here; see that doc for exactly why and what it would take.
 package moderation
@@ -11,7 +11,7 @@ import "strings"
 // BlocklistModerator rejects comments containing any of a fixed set of
 // substrings, case-insensitive. This catches the same class of obvious,
 // cheap-to-detect abuse a real bloom-filter-backed keyword check would
-// (doc/engagement-at-scale.md), without needing a bloom filter at this
+// (doc/DESIGN.md), without needing a bloom filter at this
 // repo's scale -- a few dozen banned substrings fit comfortably in a Go
 // slice checked with strings.Contains.
 type BlocklistModerator struct {

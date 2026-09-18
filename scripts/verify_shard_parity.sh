@@ -3,7 +3,7 @@
 # shard placement for the same keys against the same config/shards.json.
 # This is a correctness invariant, not a nice-to-have: if the two ever
 # disagreed, a user created via one code path could end up with related
-# data split across the wrong shards. See doc/sharding.md.
+# data split across the wrong shards. See doc/DESIGN.md.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/env.sh"

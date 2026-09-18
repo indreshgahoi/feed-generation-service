@@ -9,7 +9,7 @@ import (
 
 // SeenStateRepo implements the "Seen-State Check (drops posts viewed in
 // last 48h)" stage as a Redis ZSET keyed by last-shown timestamp. See
-// doc/trade-offs.md for why a bounded-TTL ZSET approximates a Bloom
+// doc/TRADE-OFFS.md for why a bounded-TTL ZSET approximates a Bloom
 // filter here.
 type SeenStateRepo struct {
 	client *goredis.Client

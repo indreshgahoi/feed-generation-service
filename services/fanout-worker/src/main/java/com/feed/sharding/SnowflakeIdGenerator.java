@@ -5,7 +5,7 @@ package com.feed.sharding;
  * 8 bits shard ID | 14 bits sequence, same epoch. Any service that mints
  * IDs (in any language) must use this exact layout, or ExtractShardId
  * would recover the wrong shard for IDs minted by whichever service
- * drifted. See /doc/sharding.md.
+ * drifted. See /doc/DESIGN.md.
  */
 public class SnowflakeIdGenerator {
     private static final long EPOCH_MILLIS = 1704067200000L; // 2024-01-01T00:00:00Z

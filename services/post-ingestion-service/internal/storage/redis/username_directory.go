@@ -10,7 +10,7 @@ import (
 
 // UsernameDirectory solves the classic global-secondary-index problem
 // sharding creates: username isn't the shard key, so there's no
-// bit-shift shortcut to find a user by username. See doc/sharding.md
+// bit-shift shortcut to find a user by username. See doc/DESIGN.md
 // "The username problem (a global secondary index)".
 type UsernameDirectory struct {
 	client *redis.Client

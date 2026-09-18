@@ -7,7 +7,7 @@ import (
 )
 
 // CounterRepo reads the engagement counters post-ingestion-service
-// writes on like/comment. See doc/sharding.md "Counters live in Redis,
+// writes on like/comment. See doc/DESIGN.md "Counters live in Redis,
 // not the sharded database".
 type CounterRepo struct {
 	client *goredis.Client

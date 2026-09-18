@@ -16,7 +16,7 @@
 //! but the request/response bodies are raw FlatBuffers buffers (see
 //! schemas/fbs/ranking.fbs), not nested protobuf messages -- deliberately,
 //! for this one high-volume, list-heavy call, to avoid Protobuf's own
-//! parse+allocate step. See doc/wire-protocols.md. `/healthz` stays a
+//! parse+allocate step. See doc/DESIGN.md. `/healthz` stays a
 //! plain HTTP endpoint on the original port, since that's what
 //! docker-compose's container healthcheck probes with `wget --spider`.
 

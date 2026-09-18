@@ -14,11 +14,11 @@ import java.util.concurrent.TimeUnit;
  * Calls feed-aggregation-service's ColdTierService.Append over gRPC --
  * BadgerDB (the cold tier's storage) is a Go-only embedded library, so
  * this cross-language write has to go over the network rather than a
- * shared library call. See doc/caching.md and doc/wire-protocols.md.
+ * shared library call. See doc/DESIGN.md and doc/DESIGN.md.
  *
  * Replaces the old ColdTierHttpClient: same fire-and-forget semantics
  * (a failed append is logged and dropped, never retried -- an accepted
- * loss for a DORMANT follower, per doc/caching.md), but IDs travel as
+ * loss for a DORMANT follower, per doc/DESIGN.md), but IDs travel as
  * native proto uint64 instead of hand-formatted decimal strings.
  */
 public class ColdTierGrpcClient implements ColdTierClient, AutoCloseable {

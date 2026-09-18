@@ -3,7 +3,7 @@
 // 14 bits sequence, same epoch. MUST use BigInt throughout -- these IDs
 // exceed Number.MAX_SAFE_INTEGER (2^53-1), and silently doing this
 // arithmetic in `number` would corrupt the low bits (the sequence and
-// part of the shard ID) on every single ID. See doc/sharding.md.
+// part of the shard ID) on every single ID. See doc/DESIGN.md.
 const EPOCH_MILLIS = 1704067200000n; // 2024-01-01T00:00:00Z
 const SEQUENCE_BITS = 14n;
 const SHARD_ID_BITS = 8n;

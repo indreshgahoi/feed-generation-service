@@ -33,7 +33,7 @@ func (r *PostRepo) Create(ctx context.Context, post domain.Post) error {
 
 // ListRecentByAuthors groups userIDs by shard (bit-shift, no lookup),
 // fans out to each relevant shard concurrently, and merges by CreatedAt.
-// See doc/sharding.md -- this is the one cross-shard scatter-gather a
+// See doc/DESIGN.md -- this is the one cross-shard scatter-gather a
 // graph database doesn't remove, because it's about post storage, not
 // the social graph.
 func (r *PostRepo) ListRecentByAuthors(ctx context.Context, userIDs []int64, limitPerAuthor int) ([]domain.Post, error) {

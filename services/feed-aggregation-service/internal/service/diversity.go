@@ -4,7 +4,7 @@ import "feed-aggregation-service/internal/domain"
 
 // applyDiversity enforces "max N posts per author" while preserving rank
 // order -- a business rule layered ON TOP of relevance ranking, which is
-// why it runs after ranking, not before. See doc/flow.md "Why this order
+// why it runs after ranking, not before. See doc/DESIGN.md "Why this order
 // matters".
 func applyDiversity(ranked []domain.RankedItem, maxPerAuthor int) []domain.RankedItem {
 	counts := make(map[string]int)

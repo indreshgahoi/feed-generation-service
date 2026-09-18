@@ -6,7 +6,7 @@ import "context"
 type UserRepository interface {
 	Create(ctx context.Context, user User) error
 	GetByID(ctx context.Context, userID int64) (User, error)
-	// ListAll fans out to every shard -- see doc/sharding.md, "List all
+	// ListAll fans out to every shard -- see doc/DESIGN.md, "List all
 	// users": inherently global, admin/demo-scale only.
 	ListAll(ctx context.Context) ([]User, error)
 }
@@ -18,12 +18,12 @@ type PostRepository interface {
 	// ListRecentByAuthors groups userIDs by shard, fans out in parallel,
 	// and merges by CreatedAt -- the one cross-shard scatter-gather a
 	// graph database doesn't remove, because it's about post storage, not
-	// the social graph. See doc/sharding.md.
+	// the social graph. See doc/DESIGN.md.
 	ListRecentByAuthors(ctx context.Context, userIDs []int64, limitPerAuthor int) ([]Post, error)
 }
 
 // LikeRepository is backed by sharded Postgres, co-located with the
-// LIKING user's shard (not the post's) -- see doc/sharding.md.
+// LIKING user's shard (not the post's) -- see doc/DESIGN.md.
 type LikeRepository interface {
 	// Create is idempotent: returns created=false if the row already
 	// existed rather than erroring.
@@ -32,14 +32,14 @@ type LikeRepository interface {
 }
 
 // CommentRepository is backed by sharded Postgres, co-located with the
-// POST's shard (not the commenter's) -- see doc/sharding.md.
+// POST's shard (not the commenter's) -- see doc/DESIGN.md.
 type CommentRepository interface {
 	Create(ctx context.Context, comment Comment) error
 	ListByPost(ctx context.Context, postID int64) ([]Comment, error)
 }
 
 // SocialGraphRepository is backed by Neo4j, not sharded Postgres -- see
-// doc/sharding.md "The social graph lives in Neo4j, not sharded Postgres".
+// doc/DESIGN.md "The social graph lives in Neo4j, not sharded Postgres".
 type SocialGraphRepository interface {
 	EnsureUserNode(ctx context.Context, userID int64, username string) error
 	Follow(ctx context.Context, followerID, followeeID int64) error
@@ -48,8 +48,8 @@ type SocialGraphRepository interface {
 	GetProfile(ctx context.Context, userID int64) (SocialProfile, error)
 }
 
-// CounterRepository is backed by Redis -- see doc/sharding.md "Counters
-// live in Redis, not the sharded database" and doc/engagement-at-scale.md
+// CounterRepository is backed by Redis -- see doc/DESIGN.md "Counters
+// live in Redis, not the sharded database" and doc/DESIGN.md
 // for why like counters are further split across N sub-shards keyed by
 // the liking user, not a single per-post key.
 type CounterRepository interface {
@@ -59,7 +59,7 @@ type CounterRepository interface {
 	GetLikeCount(ctx context.Context, postID int64) (int64, error)
 }
 
-// UsernameDirectory is backed by Redis -- see doc/sharding.md "The
+// UsernameDirectory is backed by Redis -- see doc/DESIGN.md "The
 // username problem (a global secondary index)".
 type UsernameDirectory interface {
 	Set(ctx context.Context, username string, userID int64) error
@@ -69,7 +69,7 @@ type UsernameDirectory interface {
 // LikeStateRepository is the Redis-backed read-your-own-writes cache:
 // "does THIS viewer currently like THIS post," answerable in one Redis
 // round trip regardless of which Postgres shard either of them lives on.
-// See doc/engagement-at-scale.md. The sharded Postgres `likes` table
+// See doc/DESIGN.md. The sharded Postgres `likes` table
 // (LikeRepository) remains the durable system of record; this is a fast
 // projection of it.
 type LikeStateRepository interface {
@@ -78,7 +78,7 @@ type LikeStateRepository interface {
 }
 
 // RateLimiter guards against like/unlike "flapping" (rapid toggling, by
-// bots or impatient double-taps) -- see doc/engagement-at-scale.md "Like
+// bots or impatient double-taps) -- see doc/DESIGN.md "Like
 // / Unlike Spam".
 type RateLimiter interface {
 	// Allow reports whether the action identified by key may proceed,
@@ -87,7 +87,7 @@ type RateLimiter interface {
 }
 
 // ContentModerator is a synchronous pre-filter checked before a comment
-// is persisted -- see doc/engagement-at-scale.md "Toxicity / Spam
+// is persisted -- see doc/DESIGN.md "Toxicity / Spam
 // Injection". Real ML-based async moderation is explicitly out of scope;
 // see that doc for why.
 type ContentModerator interface {
@@ -104,7 +104,7 @@ type EventPublisher interface {
 // ID that inherits an existing entity's shard (e.g. a post inheriting
 // its author's shard), or place a brand-new entity via the consistent-
 // hash ring. The service layer never computes a shard ID itself -- see
-// doc/sharding.md.
+// doc/DESIGN.md.
 type IDMinter interface {
 	NewIDInheritingShard(existingID int64) int64
 	NewIDForNewEntity(placementKey string) int64

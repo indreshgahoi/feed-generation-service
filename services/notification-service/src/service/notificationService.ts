@@ -19,7 +19,7 @@ export class NotificationService {
 
   /**
    * Resolves each @mention to a user_id via the Redis directory (not a
-   * Postgres query -- see doc/sharding.md, username isn't the shard
+   * Postgres query -- see doc/DESIGN.md, username isn't the shard
    * key), then writes the notification to the RECIPIENT's shard. The
    * notification's own ID inherits that same shard, mirroring how a
    * comment inherits its post's shard in post-ingestion-service.

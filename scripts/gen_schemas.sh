@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Regenerates every language's bindings from schemas/proto/*.proto and
 # schemas/fbs/*.fbs, and commits the result -- there is no protoc/flatc
-# invocation anywhere in a Dockerfile, on purpose (see doc/wire-protocols.md
+# invocation anywhere in a Dockerfile, on purpose (see doc/DESIGN.md
 # for the reasoning). This script is a dev-loop tool, like go/cargo/mvn
 # already are: running the system only needs Docker, but changing a schema
 # needs this script re-run once, same as any other codegen step.

@@ -15,7 +15,7 @@ import (
 
 // ShardedPool owns one connection pool per physical shard and the
 // consistent-hash ring used to place brand-new entities. See
-// doc/sharding.md.
+// doc/DESIGN.md.
 type ShardedPool struct {
 	pools map[int]*pgxpool.Pool
 	gens  map[int]*sharding.IDGenerator
@@ -49,7 +49,7 @@ func (sp *ShardedPool) Close() {
 }
 
 // PoolForExistingID routes to the shard that minted id -- a bit-shift,
-// never a lookup or a network call. See doc/sharding.md. Returns an
+// never a lookup or a network call. See doc/DESIGN.md. Returns an
 // error rather than a nil pool for a shard ID outside the configured
 // topology (e.g. a malformed ID from a URL path parameter) -- one bad ID
 // must degrade that one request, not crash the process for every
@@ -77,7 +77,7 @@ func (sp *ShardedPool) NewIDOnShard(shardID int) int64 {
 
 // PlaceNewEntity picks a shard for a brand-new entity via the
 // consistent-hash ring and mints its ID on that shard. Used exactly once
-// per entity's lifetime: at creation. See doc/sharding.md.
+// per entity's lifetime: at creation. See doc/DESIGN.md.
 func (sp *ShardedPool) PlaceNewEntity(placementKey string) (shardID int, id int64) {
 	shardID = sp.ring.ShardForNewEntity(placementKey)
 	return shardID, sp.gens[shardID].Next()
@@ -86,7 +86,7 @@ func (sp *ShardedPool) PlaceNewEntity(placementKey string) (shardID int, id int6
 // AllPools returns every shard's pool, for explicit cross-shard
 // scatter-gather queries. Callers must group by shard and fan out
 // concurrently themselves -- this is deliberately not hidden behind
-// something that looks like a single query. See doc/sharding.md.
+// something that looks like a single query. See doc/DESIGN.md.
 func (sp *ShardedPool) AllPools() map[int]*pgxpool.Pool {
 	return sp.pools
 }

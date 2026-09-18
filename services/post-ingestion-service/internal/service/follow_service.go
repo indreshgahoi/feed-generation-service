@@ -12,7 +12,7 @@ import (
 // atomic follower-count/celebrity updates) lives inside Neo4j
 // transactions themselves now, which is the whole point of using a graph
 // database instead of hand-rolling it across sharded Postgres. See
-// doc/sharding.md.
+// doc/DESIGN.md.
 type FollowService struct {
 	graph domain.SocialGraphRepository
 }

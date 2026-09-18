@@ -8,7 +8,7 @@ import (
 )
 
 // LikeStateRepo implements the "read-your-own-writes" cache from
-// doc/engagement-at-scale.md: a Redis Set per user, so "does THIS viewer
+// doc/DESIGN.md: a Redis Set per user, so "does THIS viewer
 // like THIS post" never has to touch sharded Postgres or wait on
 // cross-shard anything. The client renders the heart icon filled purely
 // from this, immediately after a successful Like call.

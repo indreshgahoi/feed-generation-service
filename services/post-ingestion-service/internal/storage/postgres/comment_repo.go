@@ -7,7 +7,7 @@ import (
 )
 
 // CommentRepo stores comment rows on the POST's shard, not the
-// commenter's -- see doc/sharding.md. comment_id is minted on the post's
+// commenter's -- see doc/DESIGN.md. comment_id is minted on the post's
 // shard (the caller passes an ID already placed there; see
 // service.EngagementService).
 type CommentRepo struct {

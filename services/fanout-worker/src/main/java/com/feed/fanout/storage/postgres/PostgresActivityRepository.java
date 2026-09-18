@@ -19,7 +19,7 @@ import java.util.concurrent.*;
  * Followers can live on any of the 4 Postgres shards regardless of which
  * shard the author (or Neo4j) put them on, so "filter to active" is a
  * cross-shard scatter-gather: group by shard (bit-shift, no lookup), fan
- * out concurrently, merge. See doc/sharding.md. This is the direct Java
+ * out concurrently, merge. See doc/DESIGN.md. This is the direct Java
  * counterpart of the same pattern in both Go services'
  * PostMetaRepo.RecentByAuthors.
  */

@@ -2,7 +2,7 @@ package com.feed.fanout.domain;
 
 /**
  * Backed by Redis -- the hot tier for users active within
- * ACTIVE_WITHIN_DAYS. See doc/caching.md.
+ * ACTIVE_WITHIN_DAYS. See doc/DESIGN.md.
  */
 public interface HotInboxRepository {
     /** ZADD into an active follower's own inbox, then trim to maxItems. */

@@ -14,7 +14,7 @@ interface ShardsFile {
 }
 
 /** One pg.Pool per physical shard -- the Node-side equivalent of the Go
- * services' ShardedPool. See doc/sharding.md. */
+ * services' ShardedPool. See doc/DESIGN.md. */
 export class ShardedPool implements IdMinter {
   private readonly pools = new Map<number, pg.Pool>();
   private readonly generators = new Map<number, SnowflakeIdGenerator>();

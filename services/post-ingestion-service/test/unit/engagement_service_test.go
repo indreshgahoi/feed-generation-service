@@ -154,7 +154,7 @@ func TestEngagementService_CreateComment_RejectsModeratedContent(t *testing.T) {
 func TestEngagementService_ListComments_CollapsesConcurrentRequests(t *testing.T) {
 	// Regression-style test for the singleflight wrapper: concurrent
 	// ListComments calls for the same post should not each independently
-	// re-fetch -- see doc/engagement-at-scale.md "Hot Post Cache
+	// re-fetch -- see doc/DESIGN.md "Hot Post Cache
 	// Stampede." This doesn't assert call counts (the mock repo is cheap
 	// enough that asserting singleflight actually collapsed calls would
 	// be flaky under `go test -race` scheduling); it asserts the

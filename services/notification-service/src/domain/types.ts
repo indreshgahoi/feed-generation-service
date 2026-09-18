@@ -5,7 +5,7 @@
 
 // postId/userId are bigint and createdAt is unix epoch millis -- matching
 // schemas/fbs/post_created.fbs directly, since the wire format is
-// FlatBuffers, not JSON (see doc/wire-protocols.md). This is a better fit
+// FlatBuffers, not JSON (see doc/DESIGN.md). This is a better fit
 // than the old JSON path's stringified IDs: this service already mints
 // its own bigint Snowflake IDs (see IdMinter below), so decoding straight
 // into bigint removes a string<->bigint conversion instead of adding one.
@@ -19,7 +19,7 @@ export interface PostCreatedEvent {
 }
 
 /** Backed by the Redis directory post-ingestion-service writes at signup
- * -- see doc/sharding.md "The username problem (a global secondary
+ * -- see doc/DESIGN.md "The username problem (a global secondary
  * index)". Usernames aren't the shard key, so there's no bit-shift
  * shortcut to find which of the 4 Postgres shards a username lives on. */
 export interface UsernameDirectory {
@@ -32,7 +32,7 @@ export interface NotificationRepository {
 }
 
 /** The service layer's only view of sharding: mint a self-routing ID
- * inheriting an existing entity's shard. See doc/sharding.md. */
+ * inheriting an existing entity's shard. See doc/DESIGN.md. */
 export interface IdMinter {
   newIdInheritingShard(existingId: bigint): bigint;
 }

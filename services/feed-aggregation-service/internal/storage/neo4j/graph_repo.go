@@ -1,6 +1,6 @@
 // Package neo4j implements domain.SocialGraphRepository, read-only from
 // this service's perspective (writes happen in post-ingestion-service).
-// See doc/sharding.md "The social graph lives in Neo4j, not sharded
+// See doc/DESIGN.md "The social graph lives in Neo4j, not sharded
 // Postgres".
 package neo4j
 
@@ -34,7 +34,7 @@ func (r *GraphRepo) Close(ctx context.Context) error {
 // FollowedCelebrities replaces what used to be a cross-shard
 // scatter-gather ("is each followee a celebrity") with a single Cypher
 // query -- this is the single biggest simplification Neo4j buys the read
-// path. See doc/sharding.md.
+// path. See doc/DESIGN.md.
 func (r *GraphRepo) FollowedCelebrities(ctx context.Context, userID string) ([]string, error) {
 	result, err := neo4j.ExecuteQuery(ctx, r.driver, `
 		MATCH (:User {userId: $userId})-[:FOLLOWS]->(followee:User)

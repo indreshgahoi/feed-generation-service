@@ -11,7 +11,7 @@ const epochMillis int64 = 1704067200000 // 2024-01-01T00:00:00Z
 // Modeled on Instagram's own published sharded-ID scheme, for the same
 // reason they use it: the shard that minted an ID is recoverable forever
 // with a bit-shift, no directory lookup, and it can never go stale. See
-// doc/sharding.md.
+// doc/DESIGN.md.
 const (
 	sequenceBits   = 14
 	shardIDBits    = 8
@@ -21,7 +21,7 @@ const (
 
 	// MaxShardID is the largest shard ID an 8-bit shard field can hold --
 	// the hard ceiling on shard count this ID scheme supports without
-	// changing the bit layout (see doc/sharding.md).
+	// changing the bit layout (see doc/DESIGN.md).
 	MaxShardID = (1 << shardIDBits) - 1
 )
 

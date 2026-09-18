@@ -13,7 +13,7 @@ import java.util.List;
 
 /**
  * The hybrid fan-out decision from the design doc (§3.4), plus the
- * hot/cold tiering from doc/caching.md -- this is the one place both
+ * hot/cold tiering from doc/DESIGN.md -- this is the one place both
  * policies actually live, independent of Postgres/Neo4j/Redis/HTTP
  * specifics, which is what makes it unit-testable with mocked
  * repositories (see FanoutServiceTest).
@@ -49,7 +49,7 @@ public class FanoutService {
         long score = event.createdAt; // already unix epoch millis on the wire
 
         // Celebrity status now lives on the Neo4j User node (see
-        // doc/sharding.md) -- one graph query, no Postgres shard lookup
+        // doc/DESIGN.md) -- one graph query, no Postgres shard lookup
         // needed for this decision at all.
         if (socialGraph.isCelebrity(authorId)) {
             hotInbox.pushToCelebrityOutbox(authorId, postId, score);
@@ -61,7 +61,7 @@ public class FanoutService {
         // Postgres shard each follower's own profile lives on -- the
         // simplification a graph database buys over the cross-shard
         // follows_incoming design this repo tried and abandoned. See
-        // doc/sharding.md.
+        // doc/DESIGN.md.
         List<Long> followers = socialGraph.getFollowers(authorId);
         if (followers.isEmpty()) {
             log.info("post {} by {} has no followers to fan out to", postId, authorId);
@@ -79,7 +79,7 @@ public class FanoutService {
         // pre-tiering behavior). Now their fan-out entry goes to the
         // cold tier instead, so it isn't lost -- just cheaper to store,
         // and promoted back to the hot tier if/when they return. See
-        // doc/caching.md.
+        // doc/DESIGN.md.
         for (Long followerId : dormantFollowers) {
             coldTier.appendToColdTier(followerId, postId, authorId);
         }

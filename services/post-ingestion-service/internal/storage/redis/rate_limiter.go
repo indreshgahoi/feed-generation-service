@@ -10,7 +10,7 @@ import (
 // RateLimiter is a fixed-window counter: INCR-then-EXPIRE-if-new on a
 // key that names both the actor and the time window, so windows expire
 // themselves instead of needing a cleanup job. See
-// doc/engagement-at-scale.md "Like / Unlike Spam (Flapping)" -- this
+// doc/DESIGN.md "Like / Unlike Spam (Flapping)" -- this
 // guards against exactly that: a user (or bot) rapidly toggling
 // like/unlike on the same post.
 type RateLimiter struct {

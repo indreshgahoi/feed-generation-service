@@ -21,7 +21,7 @@ func (m MediaType) Valid() bool {
 
 // User is an identity/profile record -- lives in sharded Postgres.
 // Social facts (follower count, celebrity status, the follow graph
-// itself) live on the Neo4j SocialProfile instead; see doc/sharding.md.
+// itself) live on the Neo4j SocialProfile instead; see doc/DESIGN.md.
 type User struct {
 	UserID       int64
 	Username     string
@@ -40,7 +40,7 @@ type Post struct {
 }
 
 // Like is co-located with the liking user's shard, not the post's --
-// see doc/sharding.md.
+// see doc/DESIGN.md.
 type Like struct {
 	PostID    int64
 	UserID    int64
@@ -58,7 +58,7 @@ type Comment struct {
 }
 
 // SocialProfile is the Neo4j-backed view of a user's place in the social
-// graph -- see doc/sharding.md "The social graph lives in Neo4j, not
+// graph -- see doc/DESIGN.md "The social graph lives in Neo4j, not
 // sharded Postgres".
 type SocialProfile struct {
 	UserID        int64

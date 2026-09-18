@@ -9,7 +9,7 @@ import java.util.List;
 /**
  * Loads the shard topology from the same config/shards.json file the Go
  * services read -- one source of truth for shard membership across
- * languages. See /doc/sharding.md.
+ * languages. See /doc/DESIGN.md.
  */
 public class ShardTopology {
     public List<ShardConfig> shards;

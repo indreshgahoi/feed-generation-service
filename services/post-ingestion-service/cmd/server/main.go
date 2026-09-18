@@ -93,7 +93,7 @@ func main() {
 	likeStateRepo := redisstore.NewLikeStateRepo(redisClient)
 	// 20 like/unlike toggles per (user, post) per minute -- generous
 	// enough for a genuine double-tap-to-correct-a-mistake, tight enough
-	// to stop bot-driven flapping. See doc/engagement-at-scale.md.
+	// to stop bot-driven flapping. See doc/DESIGN.md.
 	likeRateLimiter := redisstore.NewRateLimiter(redisClient, 20, time.Minute)
 	commentModerator := moderation.NewBlocklistModerator(moderation.DefaultBlocklist)
 

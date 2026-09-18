@@ -27,7 +27,7 @@ func TestPostService_CreatePost_InheritsAuthorShard(t *testing.T) {
 		t.Errorf("expected post ID to inherit the AUTHOR's shard (minter.NewIDInheritingShard(%d)), got calls %v", authorID, minter.inheritCalls)
 	}
 	if len(minter.newEntityCalls) != 0 {
-		t.Error("post creation must never make a NEW-entity placement decision -- it inherits, it doesn't get re-hashed (see doc/sharding.md)")
+		t.Error("post creation must never make a NEW-entity placement decision -- it inherits, it doesn't get re-hashed (see doc/DESIGN.md)")
 	}
 	if len(posts.posts) != 1 || posts.posts[0].PostID != post.PostID {
 		t.Error("post was not persisted")

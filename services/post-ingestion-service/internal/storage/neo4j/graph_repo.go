@@ -1,5 +1,5 @@
 // Package neo4j implements domain.SocialGraphRepository against Neo4j.
-// See doc/sharding.md, "The social graph lives in Neo4j, not sharded
+// See doc/DESIGN.md, "The social graph lives in Neo4j, not sharded
 // Postgres": a follow edge connects two users who can be on any two
 // shards, which is exactly the shape a graph database is for and a
 // sharded relational table is not.
@@ -38,7 +38,7 @@ func (r *GraphRepo) Close(ctx context.Context) error {
 
 // EnsureUserNode upserts a lightweight User node so FOLLOWS edges have
 // somewhere to attach. Called alongside the sharded Postgres user INSERT
-// -- see doc/sharding.md "What still has to stay in sync" for the
+// -- see doc/DESIGN.md "What still has to stay in sync" for the
 // two-writes-no-shared-transaction gap this creates.
 func (r *GraphRepo) EnsureUserNode(ctx context.Context, userID int64, username string) error {
 	_, err := neo4j.ExecuteQuery(ctx, r.driver, `

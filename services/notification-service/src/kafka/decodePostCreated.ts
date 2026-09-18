@@ -7,7 +7,7 @@ import { PostCreatedEvent as FbPostCreatedEvent } from '../genfbs/feed/events/po
  * Decodes the FlatBuffers `post-created` event (schemas/fbs/post_created.fbs)
  * into the plain domain.PostCreatedEvent NotificationService already
  * knows how to handle -- the same boundary the old JSON.parse path used.
- * See doc/wire-protocols.md for why this event is FlatBuffers, not JSON,
+ * See doc/DESIGN.md for why this event is FlatBuffers, not JSON,
  * on the wire.
  */
 export function decodePostCreated(raw: Uint8Array): PostCreatedEvent {

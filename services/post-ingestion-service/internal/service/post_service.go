@@ -28,7 +28,7 @@ type CreatePostInput struct {
 
 // CreatePost implements the write path from the design doc: mint a
 // self-routing ID that inherits the author's shard (a post is never
-// re-hashed to its own shard -- see doc/sharding.md), commit to the
+// re-hashed to its own shard -- see doc/DESIGN.md), commit to the
 // author's shard synchronously, then publish asynchronously so fan-out/
 // vector/notification consumers can react without the caller waiting on
 // any of them.
@@ -53,7 +53,7 @@ func (s *PostService) CreatePost(ctx context.Context, in CreatePostInput) (domai
 	if err := s.publisher.PublishPostCreated(ctx, post); err != nil {
 		// The Postgres commit already succeeded; a real system would use
 		// a transactional outbox here instead of losing the event. See
-		// the write path discussion in doc/flow.md.
+		// the write path discussion in doc/DESIGN.md.
 		return post, fmt.Errorf("post created but event publish failed (fan-out will not run for this post): %w", err)
 	}
 	return post, nil

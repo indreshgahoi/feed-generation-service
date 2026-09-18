@@ -118,7 +118,7 @@ func main() {
 
 	// gRPC server for the cold-tier append call -- internal,
 	// service-to-service only (called by fanout-worker), never routed
-	// through the Envoy gateway. See doc/gateway.md and doc/wire-protocols.md.
+	// through the Envoy gateway. See doc/DESIGN.md and doc/DESIGN.md.
 	grpcServer := grpc.NewServer()
 	coldtierpb.RegisterColdTierServiceServer(grpcServer, transportgrpc.NewColdTierServer(coldInbox))
 	grpcListener, err := net.Listen("tcp", ":"+cfg.GRPCPort)

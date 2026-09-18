@@ -13,7 +13,7 @@ import (
 )
 
 // AES-256-GCM pagination cursor -- the design doc rejects OFFSET/LIMIT
-// specifically to avoid pagination drift on scroll; see doc/flow.md.
+// specifically to avoid pagination drift on scroll; see doc/DESIGN.md.
 type CursorCodec struct {
 	key []byte
 }

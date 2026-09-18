@@ -2,7 +2,7 @@ import type { IdMinter, NotificationRepository } from '../../domain/types.js';
 import type { ShardedPool } from './shardedPool.js';
 
 /** Notifications are co-located with the RECIPIENT's shard -- see
- * doc/sharding.md. notification_id is an app-generated self-routing ID
+ * doc/DESIGN.md. notification_id is an app-generated self-routing ID
  * (not a DB SERIAL -- see db/shard-schema.sql's header comment on why an
  * auto-increment sequence can't be used once there are 4 independent
  * Postgres instances). */

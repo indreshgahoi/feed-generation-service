@@ -13,7 +13,7 @@ import java.util.Map;
 
 /**
  * Implements domain.SocialGraphRepository against Neo4j -- see
- * doc/sharding.md "The social graph lives in Neo4j, not sharded
+ * doc/DESIGN.md "The social graph lives in Neo4j, not sharded
  * Postgres". Both queries here replace what a relationally-sharded
  * design would need cross-shard scatter-gather for.
  */

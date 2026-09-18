@@ -1,6 +1,6 @@
 // Package badger implements domain.ColdInboxRepository using BadgerDB, a
 // pure-Go embedded LSM-tree store standing in for the design doc's
-// RocksDB -- see doc/caching.md for why (CGO/native-toolchain avoidance,
+// RocksDB -- see doc/DESIGN.md for why (CGO/native-toolchain avoidance,
 // the same trade-off CockroachDB made building Pebble).
 package badger
 
@@ -19,7 +19,7 @@ type ColdInboxRepo struct {
 }
 
 // Open opens (or creates) the embedded LSM-tree store at dataDir. This is
-// a single local instance with no replication -- see doc/caching.md
+// a single local instance with no replication -- see doc/DESIGN.md
 // "What's genuinely different from real RocksDB-on-NVMe" for the
 // consequences of that.
 func Open(dataDir string) (*ColdInboxRepo, error) {
@@ -61,7 +61,7 @@ func (r *ColdInboxRepo) Get(_ context.Context, userID string) ([]domain.Candidat
 // DORMANT followers only) is low enough that the race window (two
 // concurrent fan-outs to the same dormant user's cold tier) is an
 // accepted, documented gap rather than something worth a more complex
-// CRDT-style merge for. See doc/caching.md.
+// CRDT-style merge for. See doc/DESIGN.md.
 func (r *ColdInboxRepo) Append(_ context.Context, userID string, candidate domain.Candidate) error {
 	return r.db.Update(func(txn *badgerdb.Txn) error {
 		var existing []domain.Candidate

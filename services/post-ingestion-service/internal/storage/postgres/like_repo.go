@@ -7,7 +7,7 @@ import (
 )
 
 // LikeRepo stores like rows on the LIKING user's shard, not the post's --
-// see doc/sharding.md. like_count itself is NOT here; it lives in Redis
+// see doc/DESIGN.md. like_count itself is NOT here; it lives in Redis
 // (internal/storage/redis.CounterRepo) specifically because a like's
 // author and the post's author are frequently on different shards, and
 // incrementing a counter co-located with the post would make every like

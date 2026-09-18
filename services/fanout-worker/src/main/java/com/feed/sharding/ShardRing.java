@@ -9,7 +9,7 @@ import java.util.zip.CRC32;
  * Consistent-hash ring used for exactly one decision: which shard a
  * brand-new entity gets created on. This MUST produce bit-for-bit
  * identical results to pkg/sharding's Go implementation for the same
- * config -- see /doc/sharding.md and scripts/verify_shard_parity.sh.
+ * config -- see /doc/DESIGN.md and scripts/verify_shard_parity.sh.
  *
  * <p>Java's {@link CRC32} computes the same IEEE/CRC-32 polynomial as
  * Go's {@code hash/crc32.ChecksumIEEE} (the zlib/gzip standard), so no

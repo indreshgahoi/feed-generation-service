@@ -1,7 +1,7 @@
 // Package grpc exposes the cold tier over gRPC so fanout-worker (Java)
 // can append to it -- BadgerDB is a Go-only embedded library, so a
 // cross-language write has to go through this service rather than a
-// shared library. See doc/caching.md and doc/wire-protocols.md.
+// shared library. See doc/DESIGN.md and doc/DESIGN.md.
 //
 // This replaces the old POST /internal/cold-tier/append HTTP handler:
 // same underlying domain.ColdInboxRepository, typed proto request instead
@@ -27,7 +27,7 @@ func NewColdTierServer(coldInbox domain.ColdInboxRepository) *ColdTierServer {
 
 // Append is called by fanout-worker when fanning out a post to a DORMANT
 // follower, instead of the pre-tiering behavior of simply dropping that
-// fan-out write. See doc/caching.md.
+// fan-out write. See doc/DESIGN.md.
 func (s *ColdTierServer) Append(ctx context.Context, req *coldtierpb.AppendRequest) (*coldtierpb.AppendResponse, error) {
 	userID := strconv.FormatUint(req.GetUserId(), 10)
 	postID := strconv.FormatUint(req.GetPostId(), 10)

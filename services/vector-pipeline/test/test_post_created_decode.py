@@ -1,7 +1,7 @@
 """Round-trip test for main.decode_post_created against a hand-built
 schemas/fbs/post_created.fbs FlatBuffer -- the first automated test this
 service has (it previously had none at all), and the first to actually
-exercise the wire format rather than a mock. See doc/wire-protocols.md.
+exercise the wire format rather than a mock. See doc/DESIGN.md.
 """
 import os
 import sys

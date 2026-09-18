@@ -1,6 +1,6 @@
 // Package postgres implements domain repositories against the sharded
 // relational tier -- read-only from this service's perspective (writes
-// happen in post-ingestion-service). See doc/sharding.md.
+// happen in post-ingestion-service). See doc/DESIGN.md.
 package postgres
 
 import (
@@ -39,7 +39,7 @@ func (sp *ShardedPool) Close() {
 }
 
 // PoolForExistingID routes to the shard that minted id -- a bit-shift,
-// never a lookup. See doc/sharding.md. Returns an error rather than a nil
+// never a lookup. See doc/DESIGN.md. Returns an error rather than a nil
 // pool for a shard ID outside the configured topology (e.g. a malformed
 // or forged ID) -- a single bad ID must degrade that one request, not
 // crash the process for every concurrent caller.

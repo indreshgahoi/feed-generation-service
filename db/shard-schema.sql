@@ -1,10 +1,10 @@
 -- Applied identically to all 4 shard instances (shard-0..shard-3). Which
 -- shard a given row lives on is an application-level decision (see
--- pkg/sharding / doc/sharding.md) -- this file just defines the schema,
+-- pkg/sharding / doc/DESIGN.md) -- this file just defines the schema,
 -- not shard-specific data.
 --
 -- Note: there is no `follows` table here. The social graph lives in
--- Neo4j (see doc/sharding.md, "The social graph lives in Neo4j, not
+-- Neo4j (see doc/DESIGN.md, "The social graph lives in Neo4j, not
 -- sharded Postgres") -- a follow edge genuinely straddles two shards by
 -- definition, which is exactly the shape a graph database is for and a
 -- sharded relational table is not.
@@ -38,8 +38,8 @@ CREATE TABLE IF NOT EXISTS posts (
 CREATE INDEX IF NOT EXISTS idx_user_posts ON posts (user_id, created_at DESC);
 
 -- Co-located with the LIKING user's shard, not the post's -- see
--- doc/sharding.md. like_count itself lives in Redis, not a column here
--- (see doc/sharding.md "Counters live in Redis, not the sharded database").
+-- doc/DESIGN.md. like_count itself lives in Redis, not a column here
+-- (see doc/DESIGN.md "Counters live in Redis, not the sharded database").
 CREATE TABLE IF NOT EXISTS likes (
     post_id BIGINT NOT NULL,
     user_id BIGINT NOT NULL,
@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS likes (
 CREATE INDEX IF NOT EXISTS idx_likes_user ON likes (user_id);
 
 -- Co-located with the POST's shard, not the commenter's -- see
--- doc/sharding.md. comment_id is minted using the post's shard.
+-- doc/DESIGN.md. comment_id is minted using the post's shard.
 CREATE TABLE IF NOT EXISTS comments (
     comment_id BIGINT PRIMARY KEY,
     post_id BIGINT NOT NULL,

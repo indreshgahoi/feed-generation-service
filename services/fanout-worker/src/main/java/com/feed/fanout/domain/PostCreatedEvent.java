@@ -5,7 +5,7 @@ package com.feed.fanout.domain;
  * ignorant of the wire format. FanoutWorkerApp decodes the FlatBuffers
  * `post-created` event (schemas/fbs/post_created.fbs) into one of these
  * before calling FanoutService, the same POJO boundary the old
- * Jackson-based JSON path used. See doc/wire-protocols.md.
+ * Jackson-based JSON path used. See doc/DESIGN.md.
  *
  * postId/userId are native longs and createdAt is unix epoch millis --
  * matching the wire schema directly, instead of the JSON path's

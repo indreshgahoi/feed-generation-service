@@ -71,7 +71,7 @@ func TestGetFeed_ColdTierFallback_PromotesOnRead(t *testing.T) {
 		t.Fatalf("expected cold-tier candidate to surface on hot-tier miss, got %+v", result.Items)
 	}
 	if len(f.hotInbox.promoted["dormant-viewer"]) != 1 {
-		t.Error("expected cold-tier data to be promoted into the hot tier on read (see doc/caching.md)")
+		t.Error("expected cold-tier data to be promoted into the hot tier on read (see doc/DESIGN.md)")
 	}
 }
 

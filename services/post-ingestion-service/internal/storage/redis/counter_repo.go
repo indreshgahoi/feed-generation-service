@@ -1,6 +1,6 @@
 // Package redis implements the Redis-backed domain repositories: hot
 // engagement counters, the read-your-own-writes like-state cache, and the
-// username directory. See doc/engagement-at-scale.md.
+// username directory. See doc/DESIGN.md.
 package redis
 
 import (
@@ -14,7 +14,7 @@ import (
 
 // numCounterShards splits each post's like counter across N independent
 // Redis keys so a single viral post's like traffic isn't serialized
-// through one hot key -- see doc/engagement-at-scale.md "Sharded
+// through one hot key -- see doc/DESIGN.md "Sharded
 // counters." 16 matches the reference design; at this repo's demo scale
 // it's overkill for correctness (a single INCR is already atomic and
 // fast) but it's the part of the hyperscale design that's cheap to
@@ -23,7 +23,7 @@ import (
 const numCounterShards = 16
 
 // sumCacheTTLSeconds bounds how stale a read of the total can be. Reads
-// outnumber writes by 50:1+ at hyperscale (doc/engagement-at-scale.md
+// outnumber writes by 50:1+ at hyperscale (doc/DESIGN.md
 // §1), so caching the summed total -- even briefly -- turns a 16-key
 // MGET into a single GET for the overwhelming majority of reads.
 const sumCacheTTLSeconds = 5
@@ -49,7 +49,7 @@ func commentCountKey(postID int64) string { return fmt.Sprintf("comments:count:%
 // sharding schemes solving two different problems (which physical
 // Postgres owns a row, vs. which Redis key absorbs one counter
 // increment), and conflating them would be a mistake, not a
-// simplification. See doc/engagement-at-scale.md.
+// simplification. See doc/DESIGN.md.
 func counterShard(userID int64) int64 {
 	if userID < 0 {
 		userID = -userID
@@ -58,7 +58,7 @@ func counterShard(userID int64) int64 {
 }
 
 // IncrLikeCount writes to the sub-counter owned by the LIKING user's
-// hash, not a single per-post key -- see doc/engagement-at-scale.md
+// hash, not a single per-post key -- see doc/DESIGN.md
 // "The bottleneck: row-lock contention" (the Redis analogue: one hot key
 // per viral post instead of one hot row).
 func (r *CounterRepo) IncrLikeCount(ctx context.Context, postID, userID int64) (int64, error) {
@@ -90,7 +90,7 @@ func (r *CounterRepo) IncrCommentCount(ctx context.Context, postID int64) (int64
 
 // GetLikeCount serves the cached sum when available (the common case,
 // given the read:write ratio this is designed around) and recomputes by
-// summing all N sub-shards on a cache miss. See doc/engagement-at-scale.md.
+// summing all N sub-shards on a cache miss. See doc/DESIGN.md.
 func (r *CounterRepo) GetLikeCount(ctx context.Context, postID int64) (int64, error) {
 	if cached, err := r.client.Get(ctx, likeSumCacheKey(postID)).Int64(); err == nil {
 		return cached, nil

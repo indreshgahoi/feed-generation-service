@@ -7,7 +7,7 @@ import java.util.List;
  * regardless of which shard the author (or Neo4j) put them on, so
  * filtering a follower list down to "active within N days" is a
  * cross-shard scatter-gather: group by shard (bit-shift, no lookup), fan
- * out, merge. See doc/sharding.md.
+ * out, merge. See doc/DESIGN.md.
  */
 public interface ActivityRepository {
     /** Returns the subset of userIds active within activeWithinDays. */

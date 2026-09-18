@@ -17,7 +17,7 @@ func NewRouter(h Handlers) http.Handler {
 	mux.HandleFunc("POST /v1/feed/reset-seen", h.Feed.ResetSeen)
 
 	// The cold-tier append call (fanout-worker -> this service) moved to
-	// gRPC -- see internal/transport/grpc and doc/wire-protocols.md. This
+	// gRPC -- see internal/transport/grpc and doc/DESIGN.md. This
 	// HTTP mux now only serves the public, client-facing API.
 
 	return withCORS(mux)

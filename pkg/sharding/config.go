@@ -1,5 +1,5 @@
 // Package sharding is the single source of truth for how entities are
-// routed across physical Postgres shards. See /doc/sharding.md for the
+// routed across physical Postgres shards. See /doc/DESIGN.md for the
 // full design rationale -- this package is deliberately small: a config
 // loader, a consistent-hash ring used only for new-entity placement, and
 // a self-routing Snowflake-style ID generator. Everything else (which

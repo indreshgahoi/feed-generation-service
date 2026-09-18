@@ -1,6 +1,6 @@
 // Package service holds the read-path orchestration. It depends only on
-// domain interfaces -- see doc/flow.md for the stage-by-stage narrative
-// this code implements, and doc/sharding.md / doc/caching.md for why
+// domain interfaces -- see doc/DESIGN.md for the stage-by-stage narrative
+// this code implements, and doc/DESIGN.md / doc/DESIGN.md for why
 // each store is involved the way it is.
 package service
 
@@ -90,7 +90,7 @@ func (s *FeedService) GetFeed(ctx context.Context, userID string, cursorToken st
 	}
 
 	// Stage 4: hydrate content + engagement counts (two different
-	// stores -- see doc/sharding.md "Counters live in Redis").
+	// stores -- see doc/DESIGN.md "Counters live in Redis").
 	metaByID, err := s.postMeta.GetBatch(ctx, unseen)
 	if err != nil {
 		return FeedResult{}, err
@@ -166,8 +166,8 @@ func (s *FeedService) GetFeed(ctx context.Context, userID string, cursorToken st
 }
 
 // fanIn retrieves the three candidate sources concurrently -- see
-// doc/flow.md Stage 1. The in-network source additionally implements
-// hot/cold promotion: see doc/caching.md.
+// doc/DESIGN.md Stage 1. The in-network source additionally implements
+// hot/cold promotion: see doc/DESIGN.md.
 func (s *FeedService) fanIn(ctx context.Context, userID string) (inNetwork, celebrity, vector []domain.Candidate) {
 	var wg sync.WaitGroup
 	wg.Add(3)
@@ -209,7 +209,7 @@ func (s *FeedService) inNetworkCandidates(ctx context.Context, userID string) []
 
 	// Hot tier miss: this user has been dormant. Fall back to the cold
 	// tier and, if we find anything, promote it back to the hot tier --
-	// a read means they're active again now. See doc/caching.md.
+	// a read means they're active again now. See doc/DESIGN.md.
 	cold, err := s.coldInbox.Get(ctx, userID)
 	if err != nil || len(cold) == 0 {
 		return nil

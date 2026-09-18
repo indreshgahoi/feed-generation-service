@@ -3,7 +3,7 @@
 // deserialized independently by 3 consumers in 3 languages
 // (fanout-worker, vector-pipeline, notification-service), so each of
 // them gets zero-copy field access instead of a full parse. See
-// doc/wire-protocols.md.
+// doc/DESIGN.md.
 package kafka
 
 import (

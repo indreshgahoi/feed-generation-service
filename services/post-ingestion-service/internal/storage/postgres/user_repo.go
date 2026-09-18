@@ -59,7 +59,7 @@ func (r *UserRepo) GetByID(ctx context.Context, userID int64) (domain.User, erro
 }
 
 // ListAll fans out to every shard concurrently and merges. See
-// doc/sharding.md: this is explicitly a demo/admin-scale query, not
+// doc/DESIGN.md: this is explicitly a demo/admin-scale query, not
 // something a 500M-user system would ever expose unbounded like this.
 func (r *UserRepo) ListAll(ctx context.Context) ([]domain.User, error) {
 	type result struct {

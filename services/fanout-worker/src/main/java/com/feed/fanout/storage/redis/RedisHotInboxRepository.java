@@ -6,7 +6,7 @@ import redis.clients.jedis.Jedis;
 
 /**
  * Implements domain.HotInboxRepository against Redis -- see
- * doc/caching.md. The hot tier for followers active within
+ * doc/DESIGN.md. The hot tier for followers active within
  * ACTIVE_WITHIN_DAYS; the cold tier (dormant followers) is a separate
  * client (ColdTierHttpClient) since it's owned by a different service.
  */

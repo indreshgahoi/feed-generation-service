@@ -49,7 +49,7 @@ func (r *VectorRepo) postJSON(ctx context.Context, path string, body, out any) e
 
 // DeriveTasteVector approximates the "user embedding" a real two-tower
 // model would maintain, by averaging the embeddings of a handful of seed
-// posts. See doc/architecture.md.
+// posts. See doc/DESIGN.md.
 func (r *VectorRepo) DeriveTasteVector(ctx context.Context, seedPostIDs []string) ([]float64, bool) {
 	if len(seedPostIDs) == 0 {
 		return nil, false

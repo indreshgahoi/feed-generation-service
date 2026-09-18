@@ -2,7 +2,7 @@
 # Brings up the ENTIRE system (4 Postgres shards, Neo4j, Redis, Kafka,
 # Qdrant, MinIO, all 7 application services, and the Envoy gateway) as
 # Docker Compose containers. Nothing runs as a bare host process anymore
-# -- see doc/gateway.md and README.md for why. Logs: `docker compose logs
+# -- see doc/DESIGN.md and README.md for why. Logs: `docker compose logs
 # -f <service>`. Stop everything with scripts/stop_all.sh.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

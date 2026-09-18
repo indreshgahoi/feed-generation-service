@@ -45,7 +45,7 @@ func (r *PostMetaRepo) groupByShard(ids []string) map[int][]int64 {
 
 // GetBatch groups postIDs by shard (bit-shift, no lookup), fans out
 // concurrently, and merges. Note this does NOT return like/comment
-// counts -- those live in Redis; see doc/sharding.md.
+// counts -- those live in Redis; see doc/DESIGN.md.
 func (r *PostMetaRepo) GetBatch(ctx context.Context, postIDs []string) (map[string]domain.PostMeta, error) {
 	byShard := r.groupByShard(postIDs)
 
@@ -126,7 +126,7 @@ func queryPostMeta(ctx context.Context, pool *pgxpool.Pool, postIDs []int64) ([]
 }
 
 // RecentByAuthors groups authorIDs by shard, fans out in parallel, and
-// merges by CreatedAt. See doc/sharding.md -- the one cross-shard
+// merges by CreatedAt. See doc/DESIGN.md -- the one cross-shard
 // scatter-gather a graph database doesn't remove, because it's about
 // post storage, not the social graph.
 func (r *PostMetaRepo) RecentByAuthors(ctx context.Context, authorIDs []string, limitPerAuthor int) ([]domain.PostMeta, error) {

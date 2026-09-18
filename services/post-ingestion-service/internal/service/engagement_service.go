@@ -50,7 +50,7 @@ type LikeResult struct {
 // Redis counter once, because the Postgres row insert (which decides
 // whether to increment at all) is itself idempotent via ON CONFLICT DO
 // NOTHING. Rate-limited per (user, post) to guard against like/unlike
-// flapping -- see doc/engagement-at-scale.md.
+// flapping -- see doc/DESIGN.md.
 func (s *EngagementService) Like(ctx context.Context, postID, userID int64) (LikeResult, error) {
 	allowed, err := s.rateLimit.Allow(ctx, "like:"+strconv.FormatInt(userID, 10)+":"+strconv.FormatInt(postID, 10))
 	if err != nil {
@@ -117,11 +117,11 @@ type CommentWithAuthor struct {
 }
 
 // CreateComment mints the comment's ID on the POST's shard (comments
-// co-locate with their post, not their author -- see doc/sharding.md),
+// co-locate with their post, not their author -- see doc/DESIGN.md),
 // so "list comments for this post" is always single-shard regardless of
 // how many different shards the commenters themselves are spread across.
 // Runs the synchronous moderation pre-filter before persisting -- see
-// doc/engagement-at-scale.md.
+// doc/DESIGN.md.
 func (s *EngagementService) CreateComment(ctx context.Context, postID, authorID int64, body string) (CommentWithAuthor, error) {
 	if body == "" {
 		return CommentWithAuthor{}, fmt.Errorf("%w: comment body is required", domain.ErrInvalidInput)
@@ -155,7 +155,7 @@ func (s *EngagementService) CreateComment(ctx context.Context, postID, authorID 
 // collapses concurrent identical requests for the same post's comments
 // into a single underlying fetch via singleflight -- the standard fix
 // for the thundering-herd/cache-stampede pattern described in
-// doc/engagement-at-scale.md ("Hot Post Cache Stampede"): when a viral
+// doc/DESIGN.md ("Hot Post Cache Stampede"): when a viral
 // post's comment thread is requested by many viewers within the same
 // instant, only one of them actually queries the repository.
 func (s *EngagementService) ListComments(ctx context.Context, postID int64) ([]CommentWithAuthor, error) {
